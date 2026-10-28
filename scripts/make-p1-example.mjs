@@ -1,0 +1,25 @@
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {decodeSnapshot,encodeSnapshot} from '../src/persistence.js';
+import {createProductionFlowState,applyProductionFlowAction,flowInputCatalog} from '../src/p1-production-flow.js';
+import {PRODUCT_NAME} from '../src/product-brand.js';
+const platform=decodeSnapshot(await fs.readFile('examples/completed-session.json','utf8')).platform;
+platform.settings.platform.name=PRODUCT_NAME;
+let auditSequence=0;let w=platform.workspaces.demo;w.flow=createProductionFlowState();const at=new Date().toISOString();
+function act(type,rest){const r=applyProductionFlowAction(w,{type,...rest,at},{spaceId:'demo',actorId:'henry',actorName:'演示管理员'});assert.equal(r.ok,true,r.error);w=r.workspace;w.events.unshift(...r.events.map((e,i)=>({...e,id:`P1-DEMO-${++auditSequence}`,actor:'演示管理员',spaceId:'demo',space:'演示空间',before:{}})));return r.entity;}
+const project=w.production.projects.find(p=>p.id==='PRJ-001');assert.ok(project);
+const plan=act('saveTaskPlan',{projectId:project.id,requirements:{type:'text',minimumRecords:2,sources:['local','demo','published','aggregation','enhancement']},metrics:{accuracy:92,macroF1:84,minTextLength:2}});
+const catalog=flowInputCatalog(w).filter(v=>v.type!=='image'&&v.projectId===project.id&&v.records.length);
+const published=catalog.filter(v=>!v.id.startsWith('raw:'));const selected=(published.length>=2?published:catalog).slice(0,2);assert.equal(selected.length,2,'Example requires two existing inputs');
+const rules=act('saveRuleModule',{projectId:project.id,name:'P1 示例质量规则',rules:[{id:'text',type:'requiredText',enabled:true},{id:'pending',type:'forbiddenText',enabled:true,value:'记录待核对'}]});
+const aggregation=act('createJob',{kind:'aggregation',projectId:project.id,name:'P1 多源汇聚示例',inputVersionIds:selected.map(v=>v.id),config:{conflict:'namespace'},ruleVersionId:rules.id});
+act('runJob',{jobId:aggregation.id});act('reviewJob',{jobId:aggregation.id,decision:'approve',note:'已核对两个真实原型输入及父来源'});act('assessJob',{jobId:aggregation.id});const merged=act('publishJob',{jobId:aggregation.id,note:'汇聚准备版本，通过后可继续原标注流程'});
+act('sendToProduction',{jobId:aggregation.id});
+const enhancement=act('createJob',{kind:'enhancement',projectId:project.id,name:'P1 增强与整改示例',inputVersionIds:[merged.id],config:{prefix:'记录待核对：',suffix:'（模板扩写示例）'},ruleVersionId:rules.id});
+act('runJob',{jobId:enhancement.id});act('reviewJob',{jobId:enhancement.id,decision:'approve',note:'首次审核，演示规则发现问题'});const failed=act('assessJob',{jobId:enhancement.id});assert.equal(failed.status,'failed');
+for(const row of w.flow.jobs.find(j=>j.id===enhancement.id).records)act('repairJobRecord',{jobId:enhancement.id,recordId:row.id,text:row.text.replace('记录待核对：','已核对：'),note:'按问题明细修正演示标记，保留父来源'});
+act('reviewJob',{jobId:enhancement.id,decision:'approve',note:'整改后重新审核'});const passed=act('assessJob',{jobId:enhancement.id});assert.equal(passed.status,'passed');const enhanced=act('publishJob',{jobId:enhancement.id,note:'增强产物已整改复检，历史失败报告保留'});
+platform.workspaces.demo=w;const encoded=encodeSnapshot(platform);decodeSnapshot(encoded);
+const output='examples/p1-completed-session.json';await fs.writeFile(output,encoded);
+const evidence={kind:'Deterministic local state scenario, not a browser run',planId:plan.id,inputVersionIds:selected.map(v=>v.id),aggregationJobId:aggregation.id,mergedVersionId:merged.id,enhancementJobId:enhancement.id,failedReportId:failed.id,passedReportId:passed.id,enhancedVersionId:enhanced.id,output,bytes:Buffer.byteLength(encoded),originalExampleUnchanged:true};
+await fs.writeFile('p1-example-evidence.json',JSON.stringify(evidence,null,2));console.log(JSON.stringify(evidence,null,2));

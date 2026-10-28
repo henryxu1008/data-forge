@@ -1,0 +1,14 @@
+// Reproducible content/source overlap checks, not semantic deduplication or real model evaluation.
+const clone=v=>JSON.parse(JSON.stringify(v));
+export function fingerprint(value){let h=2166136261;for(const c of JSON.stringify(value)){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return (h>>>0).toString(16).padStart(8,'0');}
+const normalize=s=>String(s||'').normalize('NFKC').toLocaleLowerCase('en-US').replace(/\s+/gu,' ').trim();
+function imageContent(src){const s=String(src||''),comma=s.indexOf(',');if(comma<0)return s;const header=s.slice(0,comma).toLowerCase(),body=s.slice(comma+1);if(header.includes(';base64'))return body.replace(/\s/g,'');try{return decodeURIComponent(body)}catch{return body}}
+function sample(v,r){const image=v.type==='image'||typeof r.src==='string';return {id:r.id,key:image?'image:'+imageContent(r.src):'text:'+normalize(r.text||[r.question,r.answer].filter(Boolean).join('\n')),tokens:[`${v.id}:${r.id}`,`${v.datasetId||v.id}:${r.sourceId||r.id}`,...(r.parents||[]).map(p=>`${p.versionId}:${p.recordId}`),...(r.originSnapshot?.versionId?[`${r.originSnapshot.versionId}:${r.originSnapshot.recordId||r.id}`]:[])]};}
+export function freezeDataBaseline(v){return v?{id:v.id,datasetId:v.datasetId,projectId:v.projectId,version:v.version,count:v.records?.length||0,recordIds:(v.records||[]).map(r=>r.id),fingerprint:fingerprint((v.records||[]).map(r=>sample(v,r).key)),specSnapshot:v.specSnapshot?clone(v.specSnapshot):null,taskPlan:v.taskPlan?clone(v.taskPlan):null}:null;}
+export function checkSampleOverlap(training,evaluation){
+ const train=(training?.records||[]).map(r=>sample(training,r)),rows=(evaluation?.records||[]).map(r=>sample(evaluation,r)),byContent=new Map(),bySource=new Map();
+ for(const r of train){if(r.key!=='text:'&&r.key!=='image:'){if(!byContent.has(r.key))byContent.set(r.key,[]);byContent.get(r.key).push(r.id);}for(const token of r.tokens){if(!bySource.has(token))bySource.set(token,[]);bySource.get(token).push(r.id);}}
+ let overlapCount=0;const matches=[];
+ for(const row of rows){const content=byContent.get(row.key)||[],origin=row.tokens.flatMap(t=>bySource.get(t)||[]),ids=[...new Set([...content,...origin])];if(!ids.length)continue;overlapCount++;if(matches.length<100)matches.push({evaluationRecordId:row.id,trainingRecordIds:ids.slice(0,20),reasons:[...(content.length?['规范化内容重复']:[]),...(origin.length?['同来源样本']:[])],fingerprint:fingerprint(row.key)});}
+ return {algorithm:'normalized-content-and-source-v1',trainingVersionId:training?.id,evaluationVersionId:evaluation?.id,trainingCount:train.length,evaluationCount:rows.length,trainingBaseline:freezeDataBaseline(training),evaluationBaseline:freezeDataBaseline(evaluation),overlapCount,matches,truncatedMatches:overlapCount>matches.length,notice:'文本做Unicode/空白/大小写规范化；图片比较编码内容；追踪显式父来源。不检测语义近重复、裁剪或改写，指纹不作安全签名。'};
+}

@@ -1,0 +1,6 @@
+import React from 'react';
+import {Button,Panel,Empty,Badge} from './ui.jsx';
+export function KnowledgeDatasetDetails({state,onNavigate,tab='overview'}){
+ const s=state||{documents:[],qas:[],sourceVersions:[]};
+ return <div className="cl-body"><div className="cl-stat-grid">{[['实际文档',s.documents.length],['解析异常',s.documents.filter(d=>d.status==='failed').length],['审核通过问答',s.qas.filter(q=>q.status==='approved').length],['独立来源版本',s.sourceVersions.length]].map(([label,n])=><div key={label}><small>{label}</small><h2>{n}</h2></div>)}</div>{tab==='versions'?s.sourceVersions.map(v=><div className="cl-source-row" key={v.id}><div><strong>{v.name} · {v.version}</strong><small>{v.id} · {v.records.length} 组问答</small></div><Button onClick={()=>onNavigate('knowledge')}>查看知识来源版本</Button></div>):s.documents.map(d=><div className="cl-source-row" key={d.id}><div><strong>{d.name}</strong><small>{d.id} · {d.taskId} · {d.blocks.length} 段</small></div><Badge tone={d.status==='failed'?'amber':'mint'}>{d.status==='failed'?'解析异常':'已解析'}</Badge><Button onClick={()=>onNavigate('knowledge',{documentId:d.id})}>打开同一文档</Button></div>)}{!s.documents.length&&<Empty title="尚未接入知识正文" description="知识文档与问答在同一个生产流程整理，并发布可追溯的索引来源。"/>}<Button variant="primary" onClick={()=>onNavigate('knowledge')}>进入知识生产、审核与索引</Button></div>
+}

@@ -1,0 +1,48 @@
+# Local dependencies, generated previews, caches and runtime state
+node_modules/
+dist/
+tmp/
+output/
+coverage/
+.cache/
+.vite/
+*.tsbuildinfo
+/*.log
+/*-static-check.json
+
+# Credentials and local-only configuration
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.npmrc
+.aws/
+.codex/
+.agents/
+.vscode/
+.idea/
+.library-transfer*/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+
+# Exact JSON examples are restored from checked-in lossless archives
+/examples/completed-session.json
+/examples/p1-completed-session.json
+/examples/ai-completed-session.json
+/examples/governance-completed-session.json
+
+# Source-only public repository: retain these inputs only on the local machine
+/examples/
+/history/
+/verification/
+/public/reports/
+/*.zip
+/*.md
+!/README.md
