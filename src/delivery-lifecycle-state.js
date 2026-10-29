@@ -7,6 +7,15 @@ export const createDeliveryState = () => ({sequence:0,orders:[],events:[]});
 const events = (state,action,order,at,actorId) => state.events.unshift({orderId:order.id,action,at,actorId,status:order.status});
 const appendHistory = (o,action,actorId,at,note='') => o.history.push({action,actorId,at,note});
 const unique = xs => [...new Set(xs)];
+// Follow the latest non-cancelled replacement without rewriting intermediate orders.
+export function acceptedReplacement(state,orderId,seen=new Set()){
+ if(seen.has(orderId))return null;const order=state.orders.find(o=>o.id===orderId);if(!order)return null;
+ if(order.status==='accepted')return order;
+ if(order.status!=='rejected')return null;
+ const path=new Set(seen);path.add(orderId);const next=[...order.revisions].reverse().map(id=>state.orders.find(o=>o.id===id)).find(o=>o&&o.status!=='cancelled');
+ return next?acceptedReplacement(state,next.id,path):null;
+}
+function descendant(state,childId,parentId){const seen=new Set();let o=state.orders.find(o=>o.id===childId);while(o&&!seen.has(o.id)){if(o.id===parentId)return true;seen.add(o.id);o=state.orders.find(x=>x.id===o.revisionOf);}return false;}
 export function applyDeliveryAction(state,action,context={}) {
   const {actorId,at=new Date().toISOString(),canAccess=()=>false,versionEligible=()=>false}=context;
   if(required(actorId,'操作人')||!Number.isFinite(Date.parse(at)))return err('操作身份或时间无效');
@@ -55,9 +64,10 @@ export function applyDeliveryAction(state,action,context={}) {
     case 'closeFeedback':{
       const f=o.feedback.find(x=>x.id===a.feedbackId);
       if(!f||f.status!=='open')return err('反馈不存在或已经关闭');
-      if(f.revisionId&&!s.orders.some(x=>x.id===f.revisionId&&x.status==='accepted'))return err('关联补交尚未验收，不能关闭反馈');
+      const resolved=f.revisionId?acceptedReplacement(s,f.revisionId):null;
+      if(f.revisionId&&!resolved)return err('关联补交尚未验收，不能关闭反馈');
       if(required(a.note,'处理说明'))return err('处理说明不能为空');
-      f.status='closed';f.resolution=a.note;f.resolvedBy=actorId;f.resolvedAt=at;break;
+      f.status='closed';if(resolved)f.resolvedRevisionId=resolved.id;f.resolution=a.note;f.resolvedBy=actorId;f.resolvedAt=at;break;
     }
     case 'requestRevision':{
       if(!inStatus('rejected','accepted'))return err('仅拒收或已验收的交付可以申请补交');
@@ -106,7 +116,11 @@ export function validateDeliveryState(state,versions){
   const ancestors=new Set([o.id]);let parent=o.revisionOf;while(parent){if(ancestors.has(parent))fail();ancestors.add(parent);parent=state.orders.find(x=>x.id===parent)?.revisionOf;}
   if(o.revisionOf&&!state.orders.some(p=>p.id===o.revisionOf&&p.revisions.includes(o.id)&&p.projectId===o.projectId&&p.customerId===o.customerId&&p.versionId!==o.versionId))fail();
   if(o.revisions.some(id=>!state.orders.some(r=>r.id===id&&r.revisionOf===o.id)))fail();
-  for(const f of o.feedback)if(f.revisionId&&!state.orders.some(r=>r.id===f.revisionId&&r.revisionOf===o.id&&(f.status!=='closed'||r.status==='accepted')))fail();
+  for(const f of o.feedback){
+   if(f.revisionId&&!state.orders.some(r=>r.id===f.revisionId&&r.revisionOf===o.id))fail();
+   if(f.resolvedRevisionId&&(!f.revisionId||f.status!=='closed'||!descendant(state,f.resolvedRevisionId,f.revisionId)))fail();
+   if(f.status==='closed'&&f.revisionId){const resolved=f.resolvedRevisionId?state.orders.find(r=>r.id===f.resolvedRevisionId):acceptedReplacement(state,f.revisionId);if(resolved?.status!=='accepted')fail();}
+  }
  }
  if(state.events.some(e=>!ids.has(e.orderId)))fail();
 }
