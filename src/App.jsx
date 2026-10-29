@@ -39,17 +39,17 @@ const groups=[
 const titles=Object.fromEntries(groups.flatMap(g=>[[g.id,g.label],...(g.children||[])]));Object.assign(titles,{'task-plan':'任务需求与指标',pipeline:'生产衔接',datasets:'数据集',models:'模型仓库',quality:'质量检查',operations:'运营与恢复'});settingsPages.forEach(p=>titles[`settings-${p.id}`]=p.title);
 const productionViews=['projects','definitions','labels','ingestion','processing'];
 const modelViews=['models','training','evaluation','deployments','testing'];
-function makeWorkspace(seed=true){
- const images=seed?{defects:createImageBatch({datasetId:'defects',name:'工业缺陷图片集',projectId:'PRJ-003',projectName:'工业缺陷图片集',specSnapshot:defaultImageSpec,records:createDemoImageRecords(),at:new Date().toISOString()})}:{};
+function makeWorkspace(seed=true,at=new Date().toISOString()){
+ const images=seed?{defects:createImageBatch({datasetId:'defects',name:'工业缺陷图片集',projectId:'PRJ-003',projectName:'工业缺陷图片集',specSnapshot:defaultImageSpec,records:createDemoImageRecords(),at})}:{};
  return {datasets:seed?clone(initialDatasets).map(d=>d.id==='knowledge'?{...d,total:0,status:'production',description:'接入实际正文，整理问答并发布知识来源。'}:d):[],selectedId:seed?'customer':'',versions:seed?clone(initialVersions):[],reviewState:createReviewState(seed?clone(initialReviewTasks):[],seed?{todo:120,review:60,rework:20,approved:960}:{todo:0,review:0,rework:0,approved:0}),textBatches:{},imageBatches:images,modelState:createModelLifecycleState(),completion:createCompletionState(),production:productionSeed(!seed),flow:createProductionFlowState(),aiAnnotation:createAIAnnotationState(),governance:createGovernanceState(),events:[]};
 }
-function makePlatform(){
+export function makePlatform(at=new Date().toISOString()){
  const settings=clone({...initialBasicState,...initialResourceState,...initialSecurityState,audit:[]});
  const remap={industrial:'PRJ-003',customer:'PRJ-001',knowledge:'PRJ-002'};
  settings.projects=settings.projects.filter(p=>p.spaceId!=='demo').concat(productionSeed().projects.map(p=>({id:p.id,name:p.name,spaceId:'demo',ownerId:'henry'})));
  settings.members=settings.members.map(m=>({...m,projectIds:m.projectIds.map(id=>remap[id]||id)}));
  settings.quotas=settings.quotas.map(q=>({...q,usedGpu:0,usedConcurrency:0,usedStorageGB:0,concurrency:q.spaceId==='demo'?2:q.concurrency}));settings.resourceTasks=[];
- return {schemaVersion:2,activeSpaceId:'demo',actorId:'henry',settings,workspaces:{demo:makeWorkspace(),quality:makeWorkspace(false)}};
+ return {schemaVersion:2,activeSpaceId:'demo',actorId:'henry',settings,workspaces:{demo:makeWorkspace(true,at),quality:makeWorkspace(false,at)}};
 }
 function firstView(){const p=window.location.hash.replace(/^#settings\//,'');return settingsPages.some(s=>s.id===p)?`settings-${p}`:'datasets'}
 function projectForAction(w,kind,a){

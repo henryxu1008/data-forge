@@ -46,3 +46,6 @@ Desktop.ini
 /*.zip
 /*.md
 !/README.md
+
+# Reproducible synthetic test evidence
+/*-example-evidence.json

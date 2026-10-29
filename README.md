@@ -61,4 +61,4 @@ IndexedDB 保存当前浏览器会话，跨电脑需用户自行导出/导入。
 
 数模服务中心新增“交付与验收”。先发布通过质检的数据版本，并完成共享用途准入，再选择另一位具有该项目审核权限的成员作为客户验收人。登记外部交付包证据后提交，由指定成员签收或退回；退回后选择修订版本补交，原单与版本快照保留。已签收订单支持反馈、关联补交和处理关闭。工作台汇总交付待办，完整会话保存/恢复包含交付状态。
 
-这是本地模拟流程：不传输文件、不发送客户通知、不提供服务器鉴权或真实客户签名。校验和与外部材料引用为人工登记，未验证文件内容。运行 `npm run build` 后执行 `npm run test:source`；专项测试为 `npm run test:delivery`。全量 `test:all` 还依赖未随仓库提供的 `examples/completed-session.json` 和 `examples/ai-completed-session.json`，不能将源代码测试通过视作全量验收通过。浏览器跨角色点击验收仍需完成。
+这是本地模拟流程：不传输文件、不发送客户通知、不提供服务器鉴权或真实客户签名。校验和与外部材料引用为人工登记，未验证文件内容。运行 `npm run build` 后执行 `npm run test:source`；专项测试为 `npm run test:delivery`。`npm run test:all` 会先从应用初始数据生成合成会话、运行 P1/AI 场景并构建，再执行全量测试；生成数据不是恢复的历史用户会话。单独生成示例可运行 `npm run test:fixtures`。浏览器验收使用 `npm run test:delivery-browser`，首次需 `npx playwright install chromium`；已有兼容 Chromium 时可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`。测试使用独立浏览器上下文，覆盖退回、补交、跨角色签收、反馈关闭、刷新恢复、空间隔离和移动端宽度。
