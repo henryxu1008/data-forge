@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createDeliveryState,applyDeliveryAction,deliveryTodos} from '../src/delivery-lifecycle-state.js';
+const context={actorId:'manager',at:'2026-10-29T00:00:00.000Z',canAccess:(actor,project,permission)=>actor==='manager'&&permission!=='accept'||actor==='customer'&&permission==='accept',versionEligible:(v,p)=>p==='p1'&&['v1','v2'].includes(v)};
+const run=(s,a,ctx=context)=>applyDeliveryAction(s,a,ctx);
+test('delivery: submit, accept, feedback, revise and immutable version snapshot',()=>{
+ let s=createDeliveryState();
+ let r=run(s,{type:'create',projectId:'p1',customerId:'c1',versionId:'v1'});assert.equal(r.ok,true);s=r.state;
+ assert.equal(s.orders[0].status,'draft');
+ assert.equal(run(s,{type:'submit',orderId:'DLV-1'}).ok,false);
+ r=run(s,{type:'package',orderId:'DLV-1',checksum:'sha256:abc',qualityReportId:'q1',licenseRef:'lic1',manifest:['a','a']});assert.equal(r.ok,true);s=r.state;
+ assert.deepEqual(s.orders[0].package.manifest,['a']);
+ r=run(s,{type:'submit',orderId:'DLV-1'});assert.equal(r.ok,true);s=r.state;
+ assert.equal(run(s,{type:'accept',orderId:'DLV-1',note:'pass'}).ok,false);
+ r=run(s,{type:'accept',orderId:'DLV-1',note:'pass'},{...context,actorId:'customer'});assert.equal(r.ok,true);s=r.state;
+ assert.equal(run(s,{type:'accept',orderId:'DLV-1',note:'repeat'},{...context,actorId:'customer'}).ok,false);
+ r=run(s,{type:'openFeedback',orderId:'DLV-1',note:'incorrect row'});assert.equal(r.ok,true);s=r.state;
+ assert.equal(deliveryTodos(s)[0].feedbackOpen,1);
+ r=run(s,{type:'requestRevision',orderId:'DLV-1',newVersionId:'v2'});assert.equal(r.ok,true);s=r.state;
+ assert.equal(s.orders.find(o=>o.id==='DLV-1').versionId,'v1');
+ assert.equal(s.orders.find(o=>o.id==='DLV-2').revisionOf,'DLV-1');
+ assert.equal(run(s,{type:'requestRevision',orderId:'DLV-1',newVersionId:'v1'}).ok,false);
+});
+test('delivery: reject and cancel, unauthorized mutation remains unchanged',()=>{
+ let r=run(createDeliveryState(),{type:'create',projectId:'p1',customerId:'c1',versionId:'v1'});let s=r.state;
+ const before=JSON.stringify(s);
+ assert.equal(run(s,{type:'package',orderId:'DLV-1',checksum:'x',qualityReportId:'q',licenseRef:'l'},{...context,actorId:'intruder'}).ok,false);
+ assert.equal(JSON.stringify(s),before);
+ r=run(s,{type:'package',orderId:'DLV-1',checksum:'x',qualityReportId:'q',licenseRef:'l'});s=r.state;
+ r=run(s,{type:'submit',orderId:'DLV-1'});s=r.state;
+ r=run(s,{type:'reject',orderId:'DLV-1',note:'fails quality'},{...context,actorId:'customer'});assert.equal(r.ok,true);s=r.state;
+ r=run(s,{type:'cancel',orderId:'DLV-1',note:'abandon'});assert.equal(r.ok,true);assert.equal(r.order.status,'cancelled');
+});
