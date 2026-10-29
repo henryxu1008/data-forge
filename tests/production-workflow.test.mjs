@@ -4,6 +4,7 @@ import {applyWorkOrder,checkWorkOrderData} from '../src/production-workflow.js';
 import {createTextBatch,applyTextBatchAction} from '../src/text-production-state.js';
 import {createImageBatch,createDemoImageRecords,defaultImageSpec,applyImageBatchAction} from '../src/image-production-state.js';
 import {createDeliveryCorrection} from '../src/delivery-correction.js';
+import {applyProductionFlowAction} from '../src/p1-production-flow.js';
 import {applyWorkspaceDelivery} from '../src/delivery-platform.js';
 import {decodeSnapshot,encodeSnapshot} from '../src/persistence.js';
 import {visibleWorkspace,unifiedTodos} from '../src/platform-policy.js';
@@ -198,4 +199,29 @@ test('returned transferred text/image records belong to the current annotator wh
   for(const row of workspace(f)[key][f.id].records){assert.equal(row[owner],'张敏');const original=submitted.find(s=>s.id===row.id);if(original)assert.deepEqual(row.history.slice(0,original.history.length),original.history);data(f,'saveDraft',image?{recordId:row.id,boxes:[],noDefect:true,note:'由当前负责人修正'}:{taskId:row.id,label:'物流',note:'由当前负责人修正'},'zhangmin');data(f,image||row.status==='todo'?'submit':'resubmit',image?{recordId:row.id,boxes:[],noDefect:true,note:'返工完成'}:{taskId:row.id,label:'物流',note:'返工完成'},'zhangmin');}
   work(f,'submit',{},'zhangmin');approveRows(f);work(f,'accept',{},'wangyue');data(f,'publish',{note:'转派后返工验收通过'});assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
  }
+});
+
+test('correction batches retain inherited intermediate project restrictions for workers, reviewers and visibility',()=>{
+ for(const image of [false,true])for(const limited of ['liyi','wangyue']){
+  const f=fixture(image),key=image?'imageBatches':'textBatches';workspace(f)[key][f.id].sourceProjects=['PRJ-002'];for(const user of ['liyi','wangyue'])f.p.settings.members.find(m=>m.userId===user&&m.spaceId==='demo').projectIds.push('PRJ-002');
+  assign(f);work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'accept',{},'wangyue');const v=data(f,'publish',{note:'包含中间来源项目'}).version;
+  const d=(type,extra={},actor='henry')=>{const r=applyWorkspaceDelivery(workspace(f),f.p.settings,actor,'demo',{type,orderId:'DLV-1',...extra},at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;};
+  d('create',{projectId:v.projectId,versionId:v.id,customerId:'wangyue'});d('package',{checksum:'x',qualityReportId:'q',licenseRef:'l',manifest:['data']});d('submit');d('accept',{note:'通过'},'wangyue');d('openFeedback',{note:'纠错'},'wangyue');
+  const member=f.p.settings.members.find(m=>m.userId===limited&&m.spaceId==='demo');member.projectIds=member.projectIds.filter(id=>id!=='PRJ-002');const before=structuredClone(workspace(f)),a={orderId:'DLV-1',feedbackId:'DLV-1-FB-1',assigneeId:'liyi',reviewerId:'wangyue',dueAt};
+  assert.equal(createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',a,at).ok,false,'missing inherited source-project permission must block correction assignment');assert.deepEqual(workspace(f),before);
+  member.projectIds.push('PRJ-002');const r=createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',a,at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;f.id=r.task.datasetId;assert.deepEqual(new Set(workspace(f)[key][f.id].sourceProjects),new Set([v.projectId,'PRJ-002']));
+  member.projectIds=member.projectIds.filter(id=>id!=='PRJ-002');assert.equal(visibleWorkspace(workspace(f),f.p.settings,limited,'demo')[key][f.id],undefined);member.projectIds.push('PRJ-002');assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);const bad=structuredClone(f.p);bad.workspaces.demo[key][f.id].sourceProjects=[v.projectId];assert.throws(()=>decodeSnapshot(encodeSnapshot(bad)),/工单/);
+ }
+});
+
+test('corrections inherit the delivered frozen quality-rule module and reject otherwise valid forbidden labels',()=>{
+ const f=fixture(),r=applyProductionFlowAction(workspace(f),{type:'saveRuleModule',projectId:'PRJ-001',name:'交付允许标签',rules:[{id:'allowed',type:'allowedLabels',enabled:true,value:['物流']}],at});assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;workspace(f).textBatches[f.id].ruleModuleSnapshot=structuredClone(r.entity);
+ assign(f);work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'accept',{},'wangyue');const v=data(f,'publish',{note:'冻结质量规则'}).version;
+ const d=(type,extra={},actor='henry')=>{const r=applyWorkspaceDelivery(workspace(f),f.p.settings,actor,'demo',{type,orderId:'DLV-1',...extra},at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;};
+ d('create',{projectId:v.projectId,versionId:v.id,customerId:'wangyue'});d('package',{checksum:'x',qualityReportId:'q',licenseRef:'l',manifest:['data']});d('submit');d('accept',{note:'通过'},'wangyue');d('openFeedback',{note:'纠错'},'wangyue');
+ const corrected=createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',assigneeId:'liyi',reviewerId:'wangyue',dueAt},at);assert.equal(corrected.ok,true,corrected.error);f.p.workspaces.demo=corrected.workspace;f.id=corrected.task.datasetId;
+ assert.equal(checkWorkOrderData(workspace(f),'henry',f.id,{type:'selectQualityRules',ruleVersionId:''}).ok,false);const bad=structuredClone(f.p);delete bad.workspaces.demo.textBatches[f.id].ruleModuleSnapshot;assert.throws(()=>decodeSnapshot(encodeSnapshot(bad)),/工单/);
+ work(f,'claim',{taskId:'WORK-2'},'liyi');for(const row of workspace(f).textBatches[f.id].records)data(f,'submit',{taskId:row.id,label:'售后'});work(f,'submit',{taskId:'WORK-2'},'liyi');approveRows(f);
+ assert.equal(workspace(f).textBatches[f.id].quality.status,'failed');assert.deepEqual(workspace(f).textBatches[f.id].ruleModuleSnapshot,v.ruleModuleSnapshot);assert.ok(workspace(f).textBatches[f.id].quality.issues.some(i=>i.ruleId==='allowed'));assert.equal(applyWorkOrder(workspace(f),f.p.settings,'wangyue','demo',{type:'accept',taskId:'WORK-2'},at).ok,false);assert.equal(applyTextBatchAction(workspace(f).textBatches[f.id],{type:'publish',note:'拒绝放行',at}).ok,false);
+ work(f,'return',{taskId:'WORK-2',note:'修正质量规则不允许的标签'},'wangyue');work(f,'claim',{taskId:'WORK-2'},'liyi');for(const row of workspace(f).textBatches[f.id].records)data(f,'submit',{taskId:row.id,label:'物流'});work(f,'submit',{taskId:'WORK-2'},'liyi');approveRows(f);work(f,'accept',{taskId:'WORK-2'},'wangyue');const passed=data(f,'publish',{note:'遵守原质量规则'}).version;assert.deepEqual(passed.ruleModuleSnapshot,v.ruleModuleSnapshot);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
 });
