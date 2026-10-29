@@ -3,6 +3,10 @@ import {checkGovernanceAction} from './governance-state.js';
 import {operationScope} from './governance-sources.js';
 import {applyDeliveryAction,createDeliveryState} from './delivery-lifecycle-state.js';
 const permissions={create:'edit',package:'export',submit:'publish',accept:'approve',reject:'approve',openFeedback:'view',closeFeedback:'edit',requestRevision:'edit',cancel:'edit'};
+export function feedbackOrigin(w,orderId){
+ for(const o of w.delivery?.orders||[])for(const f of o.feedback)if(f.revisionId===orderId||f.correctionHistory?.some(h=>h.revisionId===orderId))return {orderId:o.id,feedbackId:f.id};
+ return null;
+}
 export function deliveryAccess(w,settings,actorId,spaceId,action){
  const o=w.delivery?.orders.find(o=>o.id===action.orderId);
  const projectId=action.type==='create'?action.projectId:o?.projectId;
@@ -27,11 +31,12 @@ export function applyWorkspaceDelivery(w,settings,actorId,spaceId,action,at=new 
  if(action.type==='create'){
   if(action.customerId===actorId||!canAccess(settings,action.customerId,spaceId,'approve',action.projectId).ok)return {ok:false,error:'请选择另一名具有本项目审核权限的验收成员'};
  }
+ if(action.type==='requestRevision'&&existing?.status==='rejected'&&feedbackOrigin(w,existing.id))return {ok:false,error:'此补交关联原售后反馈，请返回原反馈继续纠错与补交'};
  const feedback=existing?.feedback.find(f=>f.id===action.feedbackId);
  if(feedback?.correction&&['closeFeedback','requestRevision'].includes(action.type)){
   const task=w.workOrders?.orders.find(t=>t.id===feedback.correction.taskId);
   if(action.type==='closeFeedback'&&!feedback.revisionId)return {ok:false,error:'纠错工单必须形成已验收补交后才能关闭反馈'};
-  if(action.type==='requestRevision'){const v=workspaceVersions(w).find(v=>v.id===action.newVersionId);if(task?.status!=='accepted'||v?.datasetId!==feedback.correction.datasetId||v?.sourceRevision!==task.acceptedRevision)return {ok:false,error:'补交必须使用该纠错工单验收后发布的版本'};}
+  if(action.type==='requestRevision'){if(feedback.revisionId)return {ok:false,error:'请先为原反馈生成新一轮纠错工单，不能重复提交已拒收的纠错版本'};const v=workspaceVersions(w).find(v=>v.id===action.newVersionId);if(task?.status!=='accepted'||v?.datasetId!==feedback.correction.datasetId||v?.sourceRevision!==task.acceptedRevision)return {ok:false,error:'补交必须使用该纠错工单验收后发布的版本'};}
  }
  const r=applyDeliveryAction(w.delivery||createDeliveryState(),action,{actorId,at,canAccess:()=>true,versionEligible:(id,p)=>deliveryEligibility(w,id,p,at).ok});
  if(!r.ok)return r;

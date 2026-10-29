@@ -52,3 +52,13 @@ test('sharing licence revocation blocks acceptance and includes deliveries in im
  assert.equal(applyWorkspaceDelivery(current,p.settings,'customer','demo',{type:'accept',orderId:'DLV-1',note:'pass'},at).ok,false);
  assert.ok(affectedAssets(current,'data:D').some(a=>a.type==='delivery'&&a.orderId==='DLV-1'));
 });
+
+test('restore rejects divergent frozen versions, fabricated acceptance and mismatched version projects',()=>{
+ const p=fixture();create(p);submit(p);act(p,'accept',{orderId:'DLV-1',note:'确认'},'customer');
+ for(const corrupt of [o=>o.versionSnapshot.records[0].text='伪造',o=>o.acceptedBy='producer',o=>o.acceptedAt='bad',o=>o.history=o.history.filter(h=>h.action!=='accept'),o=>o.projectId='P2']){const bad=structuredClone(p);corrupt(bad.workspaces.demo.delivery.orders[0]);assert.throws(()=>decodeSnapshot(encodeSnapshot(bad)),/交付/);}
+});
+
+test('accepted replacement may handle its own new feedback without being redirected to an older feedback',()=>{
+ const p=fixture();create(p);submit(p);act(p,'accept',{orderId:'DLV-1',note:'通过'},'customer');act(p,'openFeedback',{orderId:'DLV-1',note:'第一条反馈'},'customer');act(p,'requestRevision',{orderId:'DLV-1',newVersionId:'v2',feedbackId:'DLV-1-FB-1',note:'第一次补交'});submit(p,'DLV-2');act(p,'accept',{orderId:'DLV-2',note:'通过'},'customer');act(p,'openFeedback',{orderId:'DLV-2',note:'独立的新反馈'},'customer');
+ const v=structuredClone(p.workspaces.demo.textBatches.D.versions[1]);v.id='v3';p.workspaces.demo.textBatches.D.versions.push(v);act(p,'requestRevision',{orderId:'DLV-2',newVersionId:'v3',feedbackId:'DLV-2-FB-1',note:'处理新反馈'});assert.equal(p.workspaces.demo.delivery.orders[0].revisionOf,'DLV-2');assert.deepEqual(decodeSnapshot(encodeSnapshot(p)).platform,p);
+});
