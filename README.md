@@ -1,12 +1,12 @@
 # data-forge · 创平数智工场
 
-源码仓库：[qq550723504/data-forge](https://github.com/qq550723504/data-forge)。用户已确认公开上传源码；本次未新增开源许可证。
+源码仓库：[henryxu1008/data-forge](https://github.com/henryxu1008/data-forge)。
 
 **前端交互原型，尚未连接真实后端。** 模拟预标注、训练、评测、推理、部署、权限、API 授权和资源调度不是实际模型效果或服务器能力；无需配置模型密钥。package.json 的 private:true 只防止误发布到 npm，与 GitHub 可见性无关。
 
 ## 运行与构建
 
-已验证 Node.js 24.18.1 / npm 11.16.0。
+使用 Node.js 24；本轮干净检出验证使用 Node.js 24.22.1。
 
 ```bash
 npm ci
@@ -22,32 +22,58 @@ npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
 
 构建后预览地址为 http://127.0.0.1:4173/。本仓库没有部署步骤；.openai/hosting.json 仅保留原构建入口需要的空 d1/r2 配置。
 
-## 本次上传范围
+## 当前验收基线
 
-包含 src/ 实际应用源码、必要品牌图片和字体、第三方许可、构建/导出脚本、锁文件和测试源码。应用运行依赖的初始状态与示意图绘制模块仍保留在源码中，都是明确标识的演示；可启动空白/初始流程并自行导入 CSV/JSON、正文和图片。
+截至 2026-10-29，Issue #1–#4 的主要前端流程已实现并形成验收记录。组合基线为 Draft PR #16；构建及 186 项状态/逻辑测试、20 个静态页面检查、8 个浏览器场景已在工作环境通过。下方较早复查记录保留当时的结果，当前覆盖以本节和三类项目验收矩阵为准。PR 与 Issue 等待团队评审，不自动合并或关闭。
 
-**不附合成数据文件、演示会话快照、CSV 样例、压缩快照、ZIP、历史报告、核验日志、构建产物、缓存或 node_modules。** 原本机文件保留，本仓库不会自动下载、恢复或生成它们。没有已有会话的预置完整验收场景可直接导入。
+| 范围 | 当前状态与评审入口 |
+| --- | --- |
+| Issue #1 生产分派、审核、仲裁 | PR #10–#13：工单分派领取、返工争议/仲裁、随机抽检、固定三级审核、期限与人工转派；文本和图片逻辑覆盖，主要交互链路已验收 |
+| Issue #2 客户交付与补交 | PR #9、#14：冻结交付、指定成员签收/拒收、反馈纠错、多轮补交和历史关联；交付主流程浏览器验收通过 |
+| Issue #3 变更影响与重验 | PR #15：普通数据/标注规范/许可撤回统一建单，冻结影响与基线、人工证据复核、失败重试及发布/使用门禁 |
+| Issue #4 统一待办与三类项目验收 | PR #16：补齐模型生产和知识智能体浏览器验收，包含告警恢复、反馈复测、权限、来源撤回、快照恢复及空间隔离 |
 
-## 验证及限制
+## 测试与自动化 CI
 
-先构建，再运行不依赖外部快照的源码回归：
+从仓库中的应用初始状态可以重建合成测试会话，无需找回历史用户快照：
 
 ```bash
-npm run build
-npm run test:source
+npm ci
+npm run test:all
 npm run test:static
+npm run test:ai-static
+npm run test:governance-static
 ```
 
-原项目 151 项完整回归和构建曾通过；本次不将其冒充不带合成数据的全量结果。按本仓库 94 文件清单建立的无快照副本已通过构建、test:source 的 104 项回归（0 失败/跳过）和 6 组 P1 静态渲染检查。test:source 保留自包含的文本、图片、模型、权限、原闭环、P1 状态和 4 项构建入口检查。静态渲染不等于浏览器交互验收，新 P1/AI/治理 UI 未新增浏览器实测。
+`test:all` 的前置步骤会依次生成 base/P1/AI 合成会话并构建；`test:governance-static` 的前置步骤会重建上游会话并生成治理合成会话。生成的 `examples/`、本地证据 JSON、`tmp/`、`output/` 和构建产物保持忽略，不上传仓库。它们用于可复演测试，不是恢复的历史数据。`test:source` 为无需外部会话的较小回归集合。
 
-以下完整验证源码仍保留，但需要本次明确排除的输入，源码版直接运行会缺少文件：
+浏览器脚本使用独立 Chromium 上下文。首次安装与复演示例：
 
-- tests/p1-integration.test.mjs：examples/completed-session.json，以及一项历史审查报告证据。
-- tests/ai-annotation-flow.test.mjs、scripts/check-ai-static.mjs：examples/p1-completed-session.json。
-- tests/governance-flow.test.mjs：examples/ai-completed-session.json。
-- scripts/check-governance-static.mjs：examples/governance-completed-session.json 和 examples/ai-completed-session.json。
-- npm run test:all / test:p1 / test:ai / test:governance / test:ai-static / test:governance-static 包含这些依赖，不能作为不带快照版本的一键全量验收。
-- scripts/make-*-example.mjs 是原项目生成器源码，依次依赖被排除的上游会话，不能凭空重建缺失的初始会话。
+```bash
+npx --no-install playwright install --with-deps chromium
+npm run test:delivery-browser
+npm run test:work-orders-browser
+npm run test:sampling-browser
+npm run test:approvals-browser
+npm run test:deadlines-browser
+npm run test:correction-retry-browser
+npm run test:changes-browser
+npm run test:model-knowledge-browser
+```
+
+每个浏览器 npm 入口先生成自己的合成会话。已有兼容 Chromium 时可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`。静态检查与浏览器测试应分开运行，避免静态输出触发开发服务器刷新。
+
+`.github/workflows/prototype-ci.yml` 在所有目标分支的 PR（含 Draft）创建、更新、重开、转待评审或修改时运行，也检查后续 main 提交；默认分支存在此工作流后可手动运行。核心任务负责构建、逻辑和静态检查，浏览器矩阵独立执行上述 8 个场景；矩阵中一个失败仍保留其余场景结果。日志、截图及合成验收证据保留 7 天。`Acceptance gate` 仅在核心任务和全部浏览器场景成功时通过，未配置失败放行或自动重试。
+
+工作流使用 Node.js 24、锁文件安装和与 Playwright 版本匹配的 Chromium，没有部署步骤。旧 PR #9–#16 分支尚未包含新工作流，不能把本轮 CI 结果描述为它们各自已获得远端绿灯；组合基线通过后再按依赖顺序评审。此变更没有修改 main 分支保护规则；是否将 `Acceptance gate` 设为必需检查由仓库管理员在评审后配置。
+
+## 团队评审清单
+
+1. 按 #9 → #10 → #11 → #12 → #13 → #14 → #15 → #16 → 本轮 CI PR 的依赖顺序查看增量，先确认当前组合 HEAD 的检查结果。
+2. 走查三条项目主线：数据标注到多轮补交、模型训练到服务下线、知识解析到智能体反馈改进；确认失败、退回、撤权和恢复路径的记录可追溯。
+3. 对照上述 Issue 矩阵核实角色权限、冻结来源和待办关闭；复演入口及更细的断言范围见下方记录。独立留出数据、防污染及图像模型分支有逻辑测试，浏览器模型评测使用显式同源回放。
+4. 核对保留边界：任意级数/项目审批模板、审批人代理替换、逐资产重验豁免尚未实现；真实后端、训练/推理、向量库、文件传输/签名、后台调度和外部通知继续暂缓。
+5. 评审结论通过后再决定后续合并安排。所有 PR 保持 Draft，本轮不合并、不部署、不自动关闭 Issue。
 
 ## 功能范围
 
@@ -69,7 +95,7 @@ IndexedDB 保存当前浏览器会话，跨电脑需用户自行导出/导入。
 
 交付页面的未关闭售后反馈可生成独立纠错批次及工单。纠错覆盖原冻结版本的全部记录，通过来源版本/记录 ID 保留关系，不继承原批次的 AI 预测接受状态。关联后必须以该工单验收后发布的版本补交，客户签收后才能关闭反馈。
 
-验证命令：`npm run test:work-orders`、`npm run test:work-orders-browser`（Chromium 配置同交付浏览器测试）。旧批次未纳入工单时维持原流程。当前支持全量复核后的随机批次抽检；已支持可选三级独立审核；自动调度/通知和真实后端仍待建设，Issue #1 尚未全部完成。
+验证命令：`npm run test:work-orders`、`npm run test:work-orders-browser`（Chromium 配置同交付浏览器测试）。旧批次未纳入工单时维持原流程。当前支持全量复核后的随机批次抽检；已支持可选三级独立审核；自动调度/通知和真实后端仍待建设；原型完成范围及未实现扩展以当前验收基线为准。
 
 ### 批次抽检与复检（Issue #1，依赖 PR #10）
 
@@ -99,7 +125,7 @@ IndexedDB 保存当前浏览器会话，跨电脑需用户自行导出/导入。
 
 验证：`npm run test:all`、`npm run test:deadlines-browser`。此功能只提供浏览器内状态提示和人工处理；关闭页面后没有后台调度，不发送邮件、短信、桌面推送，也不自动改派。服务端时间、通知投递及审批人代理仍待后续实现。
 
-### 跨流程复查记录（2026-10-29）
+### 跨流程复查记录（2026-10-29，PR #14 时点归档）
 
 范围：PR #9–#13 的组合，以及原 Issue #1–#4 的完成定义。本次复查基线为 PR #13 的 `5d0e0ed69354e8bcf12c1bdd8acbd35ab60f8fad`；这些 PR 均仍为 open Draft、未合并。真实后端按用户要求暂停。此结论不等于整个平台已完成验收。
 
@@ -129,7 +155,7 @@ IndexedDB 保存当前浏览器会话，跨电脑需用户自行导出/导入。
 | Issue #3 血缘、变更影响与失效处理 | 部分完成：已有来源追踪、许可撤回影响和操作阻断；普通数据/标签规范变更统一生成并处理重验任务的闭环尚未完成 |
 | Issue #4 三类端到端验收 | 部分完成：数据标注与交付有实际浏览器流程；模型生产和知识智能体有逻辑测试，但仍缺完整浏览器验收场景 |
 
-后续原型优先补 Issue #3 的统一变更重验、Issue #4 的模型和知识智能体浏览器验收。任意级数/项目策略模板、审批人代理或替换仍是未实现扩展；自动外部通知、后台调度及真实后端保持暂停。所有 PR 保持 Draft，不自动合并或部署。
+该时点列出的后续缺口已由下方 PR #15、#16 记录补齐。任意级数/项目策略模板、审批人代理或替换仍是未实现扩展；自动外部通知、后台调度及真实后端保持暂停。所有 PR 保持 Draft，不自动合并或部署。
 
 ### 资产变更与重验验收记录（2026-10-29）
 
@@ -159,3 +185,8 @@ IndexedDB 保存当前浏览器会话，跨电脑需用户自行导出/导入。
 本轮结果：构建及 **186/186** 逻辑测试通过；新增完整浏览器脚本通过，桌面/移动端截图已检查。本轮未发现需要修改产品代码的阻断问题，改动为可复演验收脚本、npm 入口和记录。生成的合成会话及截图位于 `output/model-knowledge-browser/`，不提交到仓库。运行浏览器脚本需要已安装的 Chromium；可用 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定现有执行文件。
 
 原先列出的三类项目前端主流程现已具备浏览器验收覆盖，PR 仍保持 Draft，等待评审，Issue 不自动关闭。浏览器模型评测使用显式同源回放；独立留出数据验收、防污染以及图像模型分支另由既有逻辑测试覆盖，不能声称本轮浏览器验证了真实泛化效果。重验仍为人工证据复核；未连接真实后端、训练资源、推理、向量库、客户签名或外部通知。没有合并或部署。
+
+
+### CI 与评审收尾记录（2026-10-29）
+
+新增 `Prototype CI` 工作流、8 场景浏览器矩阵与统一 `Acceptance gate`。从独立干净检出目录安装锁文件依赖并验证，发现治理静态检查原先依赖未提交的本地会话；已通过 `pretest:governance-static` 自动生成上游及治理合成会话。干净检出构建、186 项逻辑测试和 20 个静态页面检查通过，工作流 YAML、矩阵 npm 入口及 Bash 语法检查通过。远端运行状态以当前 Draft PR 的 Checks 为准，不能用本地结果代替远端结论。
