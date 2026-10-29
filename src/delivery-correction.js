@@ -19,7 +19,9 @@ export function createDeliveryCorrection(w,settings,actorId,space,a,at=new Date(
  batch.sourceProjects=operationScope(w,'completion',{type:'listAsset',assetId:`data:${v.id}`}).projects;
  batch.correction={orderId:o.id,feedbackId:f.id,sourceVersionId:v.id};
  next[v.type==='image'?'imageBatches':'textBatches'][datasetId]=batch;next.datasets.push({id:datasetId,name:batch.name,type:v.type==='image'?'image':'text',total:rows.length,status:'production',version:'未发布'});
- const r=applyWorkOrder(next,settings,actorId,space,{type:'create',datasetId,assigneeId:a.assigneeId,reviewerId:a.reviewerId,dueAt:a.dueAt},at);if(!r.ok)return r;
+ const sourceTask=w.workOrders?.orders.find(t=>t.datasetId===v.datasetId);
+ const inherited={...(sourceTask?.approvalChain?{approvalChain:[a.reviewerId,...sourceTask.approvalChain.slice(1)]}:{}),...(sourceTask?.samplingPolicy?{samplingPolicy:sourceTask.samplingPolicy}:{})};
+ const r=applyWorkOrder(next,settings,actorId,space,{type:'create',datasetId,assigneeId:a.assigneeId,reviewerId:a.reviewerId,dueAt:a.dueAt,...inherited},at);if(!r.ok)return r;
  const order=r.workspace.delivery.orders.find(x=>x.id===o.id),feedback=order.feedback.find(x=>x.id===f.id);
  feedback.correction={datasetId,taskId:r.task.id,sourceVersionId:v.id};order.history.push({action:'createCorrection',actorId,at,note:a.note||f.note});r.workspace.delivery.events.unshift({orderId:o.id,action:'createCorrection',actorId,at,status:o.status});return {...r,order};
 }

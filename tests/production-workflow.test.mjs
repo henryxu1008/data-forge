@@ -83,3 +83,47 @@ test('sampling rejects invalid policies and stale results without mutating works
  work(f,'recordSampling',{recordId:r.sampleIds[0],verdict:'pass',note:'依据'},'wangyue');work(f,'recordSampling',{recordId:r.sampleIds[1],verdict:'fail',note:'依据'},'wangyue');work(f,'finishSampling',{},'wangyue');assert.equal(workspace(f).workOrders.orders[0].samplingRounds[0].status,'passed');
  workspace(f).textBatches[f.id].records[0].text+='被修改';const before=structuredClone(workspace(f));assert.equal(applyWorkOrder(workspace(f),f.p.settings,'wangyue','demo',{type:'accept',taskId:'WORK-1'},at).ok,false);assert.deepEqual(workspace(f),before);
 });
+
+function multiFixture(image=false){const f=fixture(image);f.p.settings.members.find(m=>m.userId==='zhangmin'&&m.spaceId==='demo').roleId='reviewer';f.p.settings.members.find(m=>m.userId==='zhangmin'&&m.spaceId==='demo').projectIds.push(image?'PRJ-003':'PRJ-001');return f;}
+const chain=['wangyue','zhangmin','henry'];
+function assignMulti(f,extra={}){return work(f,'create',{datasetId:f.id,assigneeId:'liyi',reviewerId:'wangyue',dueAt,approvalChain:chain,...extra});}
+function readyMulti(f){work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);}
+test('text/image three-level approval requires distinct sequential actors and freezes evidence until final acceptance',()=>{
+ for(const image of [false,true]){const f=multiFixture(image);assignMulti(f);readyMulti(f);
+ const attempt=(actor,extra={})=>applyWorkOrder(workspace(f),f.p.settings,actor,'demo',{type:'accept',taskId:'WORK-1',note:'审核通过',...extra},at);
+ for(const actor of ['liyi','zhangmin','henry'])assert.equal(attempt(actor).ok,false);
+ assert.equal(attempt('wangyue',{note:''}).ok,false);work(f,'accept',{note:'逐条审核与质量检查完成'},'wangyue');
+ assert.equal(workspace(f).workOrders.orders[0].status,'review');assert.equal(checkWorkOrderData(workspace(f),'henry',f.id,{type:'publish'}).ok,false);
+ for(const type of ['approve','reject','checkQuality'])assert.equal(checkWorkOrderData(workspace(f),'wangyue',f.id,{type}).ok,false);
+ assert.equal(attempt('wangyue').ok,false);assert.equal(attempt('henry').ok,false);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+ assert.ok(unifiedTodos(workspace(f)).some(t=>t.assigneeId==='zhangmin'&&t.detail.includes('复审')));
+ work(f,'accept',{note:'独立核对结果'},'zhangmin');assert.equal(attempt('zhangmin').ok,false);work(f,'accept',{note:'交付标准满足'},'henry');data(f,'publish',{note:'三级审核完成'});
+ assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+ const p=structuredClone(f.p);p.workspaces.demo.workOrders.orders[0].approvalCycles[0].decisions[1].actorId='wangyue';assert.throws(()=>decodeSnapshot(encodeSnapshot(p)),/多级审核/);
+ }
+});
+test('later-stage return preserves decisions and forces a new initial review and sampling round',()=>{
+ const f=multiFixture();assignMulti(f,{samplingPolicy:{rate:100,minimum:1,threshold:100}});readyMulti(f);
+ function sample(){work(f,'startSampling',{},'wangyue');for(const recordId of workspace(f).workOrders.orders[0].samplingRounds.at(-1).sampleIds)work(f,'recordSampling',{recordId,verdict:'pass',note:'抽检依据'},'wangyue');work(f,'finishSampling',{},'wangyue');}
+ sample();work(f,'accept',{note:'初审完成'},'wangyue');const original=structuredClone(workspace(f).workOrders.orders[0].approvalCycles[0]);
+ assert.equal(applyWorkOrder(workspace(f),f.p.settings,'wangyue','demo',{type:'startSampling',taskId:'WORK-1'},at).ok,false);
+ work(f,'accept',{note:'复审完成'},'zhangmin');work(f,'return',{note:'终审发现遗漏'},'henry');
+ assert.deepEqual(workspace(f).workOrders.orders[0].approvalCycles[0].decisions[0],original.decisions[0]);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+ work(f,'dispute',{note:'请求第三方核对'},'liyi');for(const actor of chain)assert.equal(applyWorkOrder(workspace(f),f.p.settings,actor,'demo',{type:'arbitrate',taskId:'WORK-1',note:'不能参与仲裁',decision:'review'},at).ok,false);
+ // Independent arbiter is explicitly granted this project in this synthetic fixture.
+ const m=f.p.settings.members.find(m=>m.userId==='linyue'&&m.spaceId==='demo');if(m){m.roleId='reviewer';m.projectIds.push('PRJ-001')}else f.p.settings.members.push({id:'test-arbiter',userId:'linyue',spaceId:'demo',roleId:'reviewer',projectIds:['PRJ-001'],status:'active'});
+ work(f,'arbitrate',{decision:'rework',note:'维持返工'},'linyue');readyMulti(f);assert.equal(applyWorkOrder(workspace(f),f.p.settings,'wangyue','demo',{type:'accept',taskId:'WORK-1',note:'漏抽检'},at).ok,false);sample();
+ for(const actor of chain)work(f,'accept',{note:'新修订复核'},actor);assert.equal(workspace(f).workOrders.orders[0].approvalCycles.length,2);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+});
+test('invalid approval chains, reassignment conflicts, revoked reviewers and stale evidence fail atomically',()=>{
+ const f=multiFixture();for(const approvalChain of [['wangyue','wangyue','henry'],['wangyue','liyi','henry'],['wangyue','chensi','henry'],['henry','zhangmin','wangyue']])assert.equal(applyWorkOrder(workspace(f),f.p.settings,'henry','demo',{type:'create',datasetId:f.id,assigneeId:'liyi',reviewerId:'wangyue',dueAt,approvalChain},at).ok,false);
+ assignMulti(f);assert.equal(applyWorkOrder(workspace(f),f.p.settings,'henry','demo',{type:'reassign',taskId:'WORK-1',assigneeId:'zhangmin',dueAt:'2026-11-02T00:00:00Z',note:'转派冲突'},'2026-10-31T00:00:00Z').ok,false);readyMulti(f);work(f,'accept',{note:'初审'},'wangyue');
+ const member=f.p.settings.members.find(m=>m.userId==='zhangmin'&&m.spaceId==='demo');member.status='inactive';const action={type:'accept',taskId:'WORK-1',note:'复审'};assert.equal(applyWorkOrder(workspace(f),f.p.settings,'zhangmin','demo',action,at).ok,false);member.status='active';workspace(f).textBatches[f.id].records[0].text+='变化';const before=structuredClone(workspace(f));assert.equal(applyWorkOrder(workspace(f),f.p.settings,'zhangmin','demo',action,at).ok,false);assert.deepEqual(workspace(f),before);assert.throws(()=>decodeSnapshot(encodeSnapshot(f.p)),/多级审核/);
+});
+
+test('feedback corrections inherit multi-level review and sampling without downgrading acceptance',()=>{
+ const f=multiFixture();assignMulti(f,{samplingPolicy:{rate:100,minimum:1,threshold:100}});readyMulti(f);work(f,'startSampling',{},'wangyue');for(const recordId of workspace(f).workOrders.orders[0].samplingRounds[0].sampleIds)work(f,'recordSampling',{recordId,verdict:'pass',note:'确认'},'wangyue');work(f,'finishSampling',{},'wangyue');for(const actor of chain)work(f,'accept',{note:'通过'},actor);const v=data(f,'publish',{note:'交付'}).version;
+ function delivery(type,extra={},actor='henry'){const r=applyWorkspaceDelivery(workspace(f),f.p.settings,actor,'demo',{type,orderId:'DLV-1',...extra},at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;}
+ delivery('create',{projectId:'PRJ-001',versionId:v.id,customerId:'wangyue'});delivery('package',{checksum:'test',qualityReportId:'q',licenseRef:'l',manifest:['data.json']});delivery('submit');delivery('accept',{note:'验收'},'wangyue');delivery('openFeedback',{note:'纠错'},'wangyue');
+ const r=createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',assigneeId:'liyi',reviewerId:'wangyue',dueAt},at);assert.equal(r.ok,true,r.error);assert.deepEqual(r.task.approvalChain,chain);assert.deepEqual(r.task.samplingPolicy,{rate:100,minimum:1,threshold:100});f.p.workspaces.demo=r.workspace;assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+});
