@@ -19,7 +19,8 @@ export function createDeliveryCorrection(w,settings,actorId,space,a,at=new Date(
  const args={datasetId,name:`${o.id} 客户反馈纠错`,projectId:o.projectId,projectName:v.projectName||o.projectId,specSnapshot:v.specSnapshot,taskPlan:v.taskPlan,at};
  let batch;
  try{batch=v.type==='image'?createImageBatch({...args,records:rows}):createTextBatch({...args,rawRecords:rows});if(v.type!=='image'){const r=applyTextBatchAction(batch,{type:'clean',rules:{trim:false,dedupe:false,empty:false,pii:false},at});if(!r.ok)return r;batch=r.batch;}}catch(e){return denied(e.message);}
- batch.sourceProjects=operationScope(w,'completion',{type:'listAsset',assetId:`data:${v.id}`}).projects;
+ batch.sourceProjects=[...new Set([...(v.sourceProjects||[]),...operationScope(w,'completion',{type:'listAsset',assetId:`data:${v.id}`}).projects])];
+ if(v.ruleModuleSnapshot)batch.ruleModuleSnapshot=structuredClone(v.ruleModuleSnapshot);
  batch.correction={orderId:o.id,feedbackId:f.id,sourceVersionId:o.versionId,inputVersionId:v.id};
  next[v.type==='image'?'imageBatches':'textBatches'][datasetId]=batch;next.datasets.push({id:datasetId,name:batch.name,type:v.type==='image'?'image':'text',total:rows.length,status:'production',version:'未发布'});
  const sourceTask=w.workOrders?.orders.find(t=>t.datasetId===v.datasetId);

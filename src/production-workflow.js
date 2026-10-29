@@ -77,7 +77,7 @@ export function checkWorkOrderData(w,actorId,datasetId,a){
  if(['saveDraft','submit','resubmit'].includes(a.type))return t.status==='claimed'&&t.assigneeId===actorId?{ok:true}:fail('须先领取工单，且只能由指定标注人生产');
  if(['approve','reject','checkQuality'].includes(a.type))return t.status==='review'&&t.reviewerId===actorId?{ok:true}:fail('须提交工单后，由指定审核人处理');
  if(a.type==='reopen')return t.status==='claimed'&&t.assigneeId===actorId?{ok:true}:fail('仅返工领取后可重新打开样本');
- if(a.type==='selectQualityRules')return ['assigned','claimed'].includes(t.status)?{ok:true}:fail('审核期间不能变更质量规则');
+ if(a.type==='selectQualityRules'){if(b.correction&&b.ruleModuleSnapshot)return fail('纠错批次须沿用交付版本冻结的质量规则');return ['assigned','claimed'].includes(t.status)?{ok:true}:fail('审核期间不能变更质量规则');}
  return fail('该操作不适用于受工单管理的批次');
 }
 export function validateWorkOrders(w,settings,space){
@@ -101,6 +101,7 @@ export function validateWorkOrders(w,settings,space){
    const t=state.orders.find(t=>t.id===c.taskId),b=batchFor(w,c.datasetId),input=i?w.delivery.orders.find(x=>x.id===attempts[i-1].revisionId)?.versionSnapshot:o.versionSnapshot;
    if(!t||!b||taskIds.has(t.id)||t.datasetId!==b.datasetId||t.projectId!==o.projectId||b.correction?.orderId!==o.id||b.correction?.feedbackId!==f.id||c.sourceVersionId!==o.versionId||b.correction.sourceVersionId!==o.versionId||(c.inputVersionId||c.sourceVersionId)!==input?.id||(b.correction.inputVersionId||b.correction.sourceVersionId)!==input?.id)bad();
    taskIds.add(t.id);
+   if((input.sourceProjects||[]).some(id=>!b.sourceProjects?.includes(id))||(input.ruleModuleSnapshot&&JSON.stringify(b.ruleModuleSnapshot)!==JSON.stringify(input.ruleModuleSnapshot)))bad();
    if(i<attempts.length-1){const rejected=w.delivery.orders.find(x=>x.id===c.revisionId);if(!rejected||rejected.revisionOf!==o.id||!['rejected','cancelled'].includes(rejected.status)||rejected.versionSnapshot?.datasetId!==c.datasetId||t.status!=='accepted'||!settings.users.some(u=>u.id===c.actorId)||!Number.isFinite(Date.parse(c.at)))bad();}
   }
  }
