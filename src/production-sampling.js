@@ -20,7 +20,7 @@ export function applySampling(t,b,a,actorId,at){
    last.results.push({recordId:a.recordId,verdict:a.verdict,note:a.note.trim(),actorId,at});
   }else if(a.type==='finishSampling'){
    if(last.results.length!==last.sampleIds.length)return fail('请完成全部抽检样本判定');
-   last.passRate=last.results.filter(r=>r.verdict==='pass').length/last.sampleIds.length*100;last.status=last.passRate>=last.policy.threshold?'passed':'failed';last.finishedAt=at;
+   last.passRate=last.results.filter(r=>r.verdict==='pass').length/last.sampleIds.length*100;last.status=last.results.filter(r=>r.verdict==='pass').length*100>=last.sampleIds.length*last.policy.threshold?'passed':'failed';last.finishedAt=at;
   }else return fail('未知抽检操作');
  }
  return {ok:true};
@@ -35,7 +35,7 @@ export function validateSampling(t,b){
   if(r.population.some(x=>x.status!=='approved'))bad();
   const ids=r.population.map(x=>x.id),count=Math.min(ids.length,Math.max(r.policy.minimum,Math.ceil(ids.length*r.policy.rate/100)));
   if(new Set(ids).size!==ids.length||r.sampleIds.length!==count||new Set(r.sampleIds).size!==count||r.sampleIds.some(id=>!ids.includes(id))||new Set(r.results.map(x=>x.recordId)).size!==r.results.length||r.results.some(x=>!r.sampleIds.includes(x.recordId)||!['pass','fail'].includes(x.verdict)||!x.note?.trim()||x.actorId!==t.reviewerId||!Number.isFinite(Date.parse(x.at))))bad();
-  if(['passed','failed'].includes(r.status)){const rate=r.results.filter(x=>x.verdict==='pass').length/count*100;if(r.results.length!==count||r.passRate!==rate||(r.status==='passed')!==(rate>=r.policy.threshold)||!Number.isFinite(Date.parse(r.finishedAt)))bad();}
+  if(['passed','failed'].includes(r.status)){const rate=r.results.filter(x=>x.verdict==='pass').length/count*100;if(r.results.length!==count||r.passRate!==rate||(r.status==='passed')!==(r.results.filter(x=>x.verdict==='pass').length*100>=count*r.policy.threshold)||!Number.isFinite(Date.parse(r.finishedAt)))bad();}
   if(r.returnedAt&&(!Number.isFinite(Date.parse(r.returnedAt))||!r.returnReason?.trim()))bad();
  }
  if(t.status==='accepted'&&!samplingPassed(t,b))bad();
