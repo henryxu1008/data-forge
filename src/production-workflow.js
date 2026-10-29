@@ -28,8 +28,11 @@ export function applyWorkOrder(w,s,actorId,space,a,at=new Date().toISOString()){
   if(!Number.isFinite(Date.parse(due))||Date.parse(due)<=Date.parse(at))return fail('截止时间必须晚于当前时间');
   const name=s.users.find(u=>u.id===user)?.name;
   const fn=b.type==='image'?applyImageBatchAction:applyTextBatchAction;
-  const r=fn(batch,{type:'assign',assignee:name,...(b.type==='image'?{recordIds:batch.records.map(r=>r.id)}:{sampleIds:batch.records.map(r=>r.id)}),at});
-  if(!r.ok)return r;batch=r.batch;batch.records=batch.records.map(r=>({...r,reviewerId:reviewer}));
+  const pending=batch.records.filter(r=>['todo','rework'].includes(r.status));
+  if(pending.some(r=>(b.type==='image'?r.assignee:r.annotator)!==name)){
+   const ids=pending.map(r=>r.id),r=fn(batch,{type:'assign',assignee:name,...(b.type==='image'?{recordIds:ids}:{sampleIds:ids}),at});if(!r.ok)return r;batch=r.batch;
+  }
+  batch.records=batch.records.map(r=>r.reviewerId===reviewer?r:{...r,reviewerId:reviewer});
   next[b.type==='image'?'imageBatches':'textBatches'][b.datasetId]=batch;return {ok:true};
  }
  if(a.type==='create'){
@@ -53,8 +56,7 @@ export function applyWorkOrder(w,s,actorId,space,a,at=new Date().toISOString()){
    case 'arbitrate':if(task.status!=='disputed'||operator||reviewer||task.approvalChain?.includes(actorId)||!['rework','review'].includes(a.decision))return fail('须由独立审核成员仲裁，选择重新返工或重新审核');if(a.decision==='review'){const fn=b.type==='image'?applyImageBatchAction:applyTextBatchAction;for(const row of [...batch.records]){if(!['todo','rework'].includes(row.status))continue;const r=fn(batch,{type:b.type!=='image'&&row.status==='rework'?'resubmit':'submit',taskId:row.id,recordId:row.id,label:row.label,note:a.note,at});if(!r.ok)return r;batch=r.batch;}next[b.type==='image'?'imageBatches':'textBatches'][b.datasetId]=batch;}task.status=a.decision;break;
    case 'reassign':{
     if(!['assigned','claimed','rework'].includes(task.status)||Date.parse(at)<=Date.parse(task.dueAt)||a.assigneeId===task.assigneeId)return fail('仅超时的未完成工单可转派给其他成员');
-    // Preserve submitted rows: transfer is only safe after they have been returned.
-    if(batch.records.some(r=>!['todo','rework'].includes(r.status)))return fail('请先由审核人退回已提交样本，再转派');
+    // Submitted rows keep their original annotator, content and history; only pending work is reassigned.
     const result=assign(a.assigneeId,task.reviewerId,a.dueAt);if(!result.ok)return result;task.assigneeId=a.assigneeId;task.dueAt=a.dueAt;task.status='assigned';break;
    }
    default:return fail('不支持的工单操作');
