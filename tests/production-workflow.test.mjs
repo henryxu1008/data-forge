@@ -1,3 +1,4 @@
+import {applyDeliveryAction} from '../src/delivery-lifecycle-state.js';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
 import {applyWorkOrder,checkWorkOrderData} from '../src/production-workflow.js';
 import {createTextBatch,applyTextBatchAction} from '../src/text-production-state.js';
@@ -71,4 +72,20 @@ test('overdue partial and fully submitted batches transfer without changing subm
   for(const row of workspace(f)[key][f.id].records.filter(r=>r.status==='todo'))data(f,'submit',image?{recordId:row.id,boxes:[],noDefect:true}:{taskId:row.id,label:'物流'},'henry');
   assert.deepEqual(workspace(f)[key][f.id].records.filter(r=>before.some(x=>x.id===r.id)),before);work(f,'submit',{},'henry');approveRows(f);work(f,'accept',{},'wangyue');data(f,'publish',{note:'保留原提交后继续完成'});assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
  }
+});
+
+
+test('managed correction descendants cannot substitute unrelated versions, including legacy feedback closure and restore',()=>{
+ const f=fixture();assign(f);work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'accept',{},'wangyue');const original=data(f,'publish',{note:'原版本'}).version;
+ const d=(type,extra={},actor='henry')=>{const r=applyWorkspaceDelivery(workspace(f),f.p.settings,actor,'demo',{type,orderId:'DLV-1',...extra},at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;};const pack={checksum:'x',qualityReportId:'q',licenseRef:'l',manifest:['data']};
+ d('create',{projectId:'PRJ-001',versionId:original.id,customerId:'wangyue'});d('package',pack);d('submit');d('accept',{note:'通过'},'wangyue');d('openFeedback',{note:'纠错'},'wangyue');
+ const r=createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',assigneeId:'liyi',reviewerId:'wangyue',dueAt},at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;f.id=r.task.datasetId;
+ work(f,'claim',{taskId:'WORK-2'},'liyi');submitRows(f);work(f,'submit',{taskId:'WORK-2'},'liyi');approveRows(f);work(f,'accept',{taskId:'WORK-2'},'wangyue');const corrected=data(f,'publish',{note:'纠错版本'}).version;
+ d('requestRevision',{newVersionId:corrected.id,feedbackId:'DLV-1-FB-1',note:'补交'});d('package',{...pack,orderId:'DLV-2'});d('submit',{orderId:'DLV-2'});d('reject',{orderId:'DLV-2',note:'未通过'},'wangyue');
+ assert.equal(applyWorkspaceDelivery(workspace(f),f.p.settings,'henry','demo',{type:'requestRevision',orderId:'DLV-2',newVersionId:original.id,note:'换无关版本'},at).ok,false);
+ // Reconstruct a legacy chain using the pure reducer, bypassing today's workspace gate.
+ const legacy=(type,extra={},actor='henry')=>{const w=workspace(f),r=applyDeliveryAction(w.delivery,{type,...extra},{actorId:actor,at,canAccess:()=>true,versionEligible:()=>true});assert.equal(r.ok,true,r.error);w.delivery=r.state;return r.order;};
+ const bad=legacy('requestRevision',{orderId:'DLV-2',newVersionId:original.id,note:'旧旁路'});bad.versionSnapshot=structuredClone(original);legacy('package',{orderId:bad.id,...pack});legacy('submit',{orderId:bad.id});legacy('accept',{orderId:bad.id,note:'旧旁路签收'},'wangyue');
+ assert.equal(applyWorkspaceDelivery(workspace(f),f.p.settings,'henry','demo',{type:'closeFeedback',orderId:'DLV-1',feedbackId:'DLV-1-FB-1',note:'无关版本不能关闭'},at).ok,false);
+ legacy('closeFeedback',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',note:'旧旁路关闭'});assert.throws(()=>decodeSnapshot(encodeSnapshot(f.p)),/工单/);
 });

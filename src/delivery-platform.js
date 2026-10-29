@@ -1,7 +1,8 @@
+import {correctionOwner,correctionVersionMatches} from './delivery-correction-evidence.js';
 import {canAccess,workspaceVersions} from './platform-policy.js';
 import {checkGovernanceAction} from './governance-state.js';
 import {operationScope} from './governance-sources.js';
-import {applyDeliveryAction,createDeliveryState} from './delivery-lifecycle-state.js';
+import {applyDeliveryAction,createDeliveryState,acceptedReplacement} from './delivery-lifecycle-state.js';
 const permissions={create:'edit',package:'export',submit:'publish',accept:'approve',reject:'approve',openFeedback:'view',closeFeedback:'edit',requestRevision:'edit',cancel:'edit'};
 export function deliveryRecipientAccess(w,settings,customerId,spaceId,versionId,projectId){
  const approval=canAccess(settings,customerId,spaceId,'approve',projectId);if(!approval.ok)return approval;
@@ -36,10 +37,11 @@ export function applyWorkspaceDelivery(w,settings,actorId,spaceId,action,at=new 
  if(['create','requestRevision','submit'].includes(action.type)){
   const recipient=deliveryRecipientAccess(w,settings,action.type==='create'?action.customerId:existing.customerId,spaceId,action.newVersionId||action.versionId||existing?.versionId,action.type==='create'?action.projectId:existing.projectId);if(!recipient.ok)return recipient;
  }
+ if(action.type==='requestRevision'&&existing?.status==='rejected'&&correctionOwner(w,existing.id))return {ok:false,error:'此补交关联原纠错工单，请返回原反馈处理，不能换用无关版本'};
  const feedback=existing?.feedback.find(f=>f.id===action.feedbackId);
  if(feedback?.correction&&['closeFeedback','requestRevision'].includes(action.type)){
   const task=w.workOrders?.orders.find(t=>t.id===feedback.correction.taskId);
-  if(action.type==='closeFeedback'&&!feedback.revisionId)return {ok:false,error:'纠错工单必须形成已验收补交后才能关闭反馈'};
+  if(action.type==='closeFeedback'&&(!feedback.revisionId||!correctionVersionMatches(w,feedback,acceptedReplacement(w.delivery,feedback.revisionId)?.versionId)))return {ok:false,error:'纠错工单必须形成已验收补交后才能关闭反馈'};
   if(action.type==='requestRevision'){const v=workspaceVersions(w).find(v=>v.id===action.newVersionId);if(task?.status!=='accepted'||v?.datasetId!==feedback.correction.datasetId||v?.sourceRevision!==task.acceptedRevision)return {ok:false,error:'补交必须使用该纠错工单验收后发布的版本'};}
  }
  const r=applyDeliveryAction(w.delivery||createDeliveryState(),action,{actorId,at,canAccess:()=>true,versionEligible:(id,p)=>deliveryEligibility(w,id,p,at).ok});

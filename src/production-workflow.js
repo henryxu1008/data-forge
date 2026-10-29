@@ -1,3 +1,5 @@
+import {correctionVersionMatches} from './delivery-correction-evidence.js';
+import {acceptedReplacement} from './delivery-lifecycle-state.js';
 import {canAccess,authorizeAction} from './platform-policy.js';
 import {applyTextBatchAction} from './text-production-state.js';
 import {applyImageBatchAction} from './image-production-state.js';
@@ -83,5 +85,5 @@ export function validateWorkOrders(w,settings,space){
   if(![t.assigneeId,t.reviewerId].every(id=>settings.users.some(u=>u.id===id))||!settings.projects.some(p=>p.id===t.projectId&&p.spaceId===space))bad();
   if(t.status==='accepted'&&(t.acceptedBy!==t.reviewerId||t.acceptedRevision!==b.revision||(b.quality?.revision??b.quality?.sourceRevision)!==b.revision||b.records.some(r=>r.status!=='approved')||b.quality?.status!=='passed'))bad();
  }
- for(const o of w.delivery?.orders||[])for(const f of o.feedback){if(!f.correction)continue;const t=state.orders.find(t=>t.id===f.correction.taskId),b=batchFor(w,f.correction.datasetId);if(!t||!b||t.datasetId!==b.datasetId||t.projectId!==o.projectId||b.correction?.orderId!==o.id||b.correction?.feedbackId!==f.id||f.correction.sourceVersionId!==o.versionId||b.correction.sourceVersionId!==o.versionId)bad();}
+ for(const o of w.delivery?.orders||[])for(const f of o.feedback){if(!f.correction)continue;if(f.status==='closed'&&!correctionVersionMatches(w,f,(f.resolvedRevisionId?w.delivery.orders.find(x=>x.id===f.resolvedRevisionId):acceptedReplacement(w.delivery,f.revisionId))?.versionId))bad();const t=state.orders.find(t=>t.id===f.correction.taskId),b=batchFor(w,f.correction.datasetId);if(!t||!b||t.datasetId!==b.datasetId||t.projectId!==o.projectId||b.correction?.orderId!==o.id||b.correction?.feedbackId!==f.id||f.correction.sourceVersionId!==o.versionId||b.correction.sourceVersionId!==o.versionId)bad();}
 }
