@@ -1,6 +1,8 @@
 import {recordDeadlineChange,validateDeadlineChanges} from './production-deadlines.js';
 import {approvalActor,activeApproval,approveStage,approvalComplete,validateApprovals} from './production-approvals.js';
 import {validSamplingPolicy,applySampling,samplingPassed,validateSampling} from './production-sampling.js';
+import {correctionVersionMatches} from './delivery-correction-evidence.js';
+import {acceptedReplacement} from './delivery-lifecycle-state.js';
 import {canAccess,authorizeAction} from './platform-policy.js';
 import {applyTextBatchAction} from './text-production-state.js';
 import {applyImageBatchAction} from './image-production-state.js';
@@ -97,6 +99,7 @@ export function validateWorkOrders(w,settings,space){
  for(const o of w.delivery?.orders||[])for(const f of o.feedback){
   if(f.correctionHistory!==undefined&&!Array.isArray(f.correctionHistory))bad();
   if(!f.correction){if(f.correctionHistory?.length)bad();continue;}
+  if(f.status==='closed'&&!correctionVersionMatches(w,f,(f.resolvedRevisionId?w.delivery.orders.find(x=>x.id===f.resolvedRevisionId):acceptedReplacement(w.delivery,f.revisionId))?.versionId))bad();
   const attempts=[...(f.correctionHistory||[]),f.correction],taskIds=new Set();
   for(const [i,c] of attempts.entries()){
    const t=state.orders.find(t=>t.id===c.taskId),b=batchFor(w,c.datasetId),input=i?w.delivery.orders.find(x=>x.id===attempts[i-1].revisionId)?.versionSnapshot:o.versionSnapshot;
