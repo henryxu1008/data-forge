@@ -28,7 +28,9 @@
     "test:work-orders": "node --test tests/production-workflow.test.mjs",
     "pretest:work-orders": "npm run test:fixtures",
     "test:work-orders-browser": "node scripts/test-delivery-browser.mjs --work-orders",
-    "pretest:work-orders-browser": "npm run test:fixtures"
+    "pretest:work-orders-browser": "npm run test:fixtures",
+    "test:sampling-browser": "node scripts/test-sampling-browser.mjs",
+    "pretest:sampling-browser": "npm run test:fixtures"
   },
   "dependencies": {
     "@fontsource/noto-sans-sc": "^5.3.1",

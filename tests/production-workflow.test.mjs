@@ -57,3 +57,29 @@ test('AI-produced text and image corrections retain source links without inherit
  const corrected=(kind==='image'?r.workspace.imageBatches:r.workspace.textBatches)[r.task.datasetId];assert.ok(corrected.records.every(row=>!row.aiAnnotation&&row.originSnapshot.versionId===v.id));assert.ok(r.workspace.delivery.orders[0].versionSnapshot.records.some(row=>row.aiAnnotation));assert.deepEqual(decodeSnapshot(encodeSnapshot(p)).platform,p);
  }
 });
+
+test('text/image sampling freezes selection, fails acceptance, and retains failed evidence through rework',()=>{
+ for(const image of [false,true]){
+  const f=fixture(image);work(f,'create',{datasetId:f.id,assigneeId:'liyi',reviewerId:'wangyue',dueAt,samplingPolicy:{rate:50,minimum:1,threshold:100}});
+  work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);
+  const tryAction=(type,extra={},actor='wangyue')=>applyWorkOrder(workspace(f),f.p.settings,actor,'demo',{type,taskId:'WORK-1',...extra},at);
+  assert.equal(tryAction('accept').ok,false);assert.equal(tryAction('startSampling',{},'liyi').ok,false);
+  work(f,'startSampling',{},'wangyue');let t=workspace(f).workOrders.orders[0],r=t.samplingRounds[0];const frozen=structuredClone(r);
+  assert.equal(r.sampleIds.length,Math.ceil(r.population.length/2));assert.equal(tryAction('startSampling').ok,false);assert.equal(tryAction('finishSampling').ok,false);
+  assert.equal(tryAction('recordSampling',{recordId:'outsider',verdict:'pass',note:'x'}).ok,false);
+  for(const recordId of r.sampleIds)work(f,'recordSampling',{recordId,verdict:'fail',note:'语义与标注不符'},'wangyue');
+  assert.equal(tryAction('recordSampling',{recordId:r.sampleIds[0],verdict:'pass',note:'覆盖'}).ok,false);
+  work(f,'finishSampling',{},'wangyue');assert.equal(tryAction('accept').ok,false);assert.equal(tryAction('startSampling').ok,false);
+  const failed=structuredClone(workspace(f).workOrders.orders[0].samplingRounds[0]);
+  work(f,'return',{note:'抽检不合格，全部返工'},'wangyue');work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'startSampling',{},'wangyue');
+  t=workspace(f).workOrders.orders[0];r=t.samplingRounds[1];assert.equal(t.samplingRounds[0].status,'failed');assert.deepEqual(t.samplingRounds[0].results,failed.results);assert.deepEqual(t.samplingRounds[0].population,frozen.population);
+  assert.ok(r.revision>frozen.revision);for(const recordId of r.sampleIds)work(f,'recordSampling',{recordId,verdict:'pass',note:'复核通过'},'wangyue');work(f,'finishSampling',{},'wangyue');work(f,'accept',{},'wangyue');data(f,'publish',{note:'抽检通过'});assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+  for(const corrupt of [p=>p.workspaces.demo.workOrders.orders[0].samplingRounds[1].sampleIds.push('forged'),p=>p.workspaces.demo.workOrders.orders[0].samplingRounds[1].passRate=0,p=>p.workspaces.demo.workOrders.orders[0].samplingPolicy.threshold=1]){const p=structuredClone(f.p);corrupt(p);assert.throws(()=>decodeSnapshot(encodeSnapshot(p)),/抽检/);}
+ }
+});
+test('sampling rejects invalid policies and stale results without mutating workspace',()=>{
+ const f=fixture();for(const policy of [{rate:0,minimum:1,threshold:100},{rate:101,minimum:1,threshold:100},{rate:20,minimum:1.5,threshold:100},{rate:20,minimum:1,threshold:NaN}])assert.equal(applyWorkOrder(workspace(f),f.p.settings,'henry','demo',{type:'create',datasetId:f.id,assigneeId:'liyi',reviewerId:'wangyue',dueAt,samplingPolicy:policy},at).ok,false);
+ work(f,'create',{datasetId:f.id,assigneeId:'liyi',reviewerId:'wangyue',dueAt,samplingPolicy:{rate:1,minimum:999,threshold:50}});work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'startSampling',{},'wangyue');const r=workspace(f).workOrders.orders[0].samplingRounds[0];assert.equal(r.sampleIds.length,2);
+ work(f,'recordSampling',{recordId:r.sampleIds[0],verdict:'pass',note:'依据'},'wangyue');work(f,'recordSampling',{recordId:r.sampleIds[1],verdict:'fail',note:'依据'},'wangyue');work(f,'finishSampling',{},'wangyue');assert.equal(workspace(f).workOrders.orders[0].samplingRounds[0].status,'passed');
+ workspace(f).textBatches[f.id].records[0].text+='被修改';const before=structuredClone(workspace(f));assert.equal(applyWorkOrder(workspace(f),f.p.settings,'wangyue','demo',{type:'accept',taskId:'WORK-1'},at).ok,false);assert.deepEqual(workspace(f),before);
+});
