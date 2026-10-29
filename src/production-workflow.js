@@ -1,3 +1,4 @@
+import {recordDeadlineChange,validateDeadlineChanges} from './production-deadlines.js';
 import {approvalActor,activeApproval,approveStage,approvalComplete,validateApprovals} from './production-approvals.js';
 import {validSamplingPolicy,applySampling,samplingPassed,validateSampling} from './production-sampling.js';
 import {canAccess,authorizeAction} from './platform-policy.js';
@@ -17,7 +18,7 @@ export function applyWorkOrder(w,s,actorId,space,a,at=new Date().toISOString()){
  if(!Number.isFinite(Date.parse(at)))return fail('操作时间无效');
  const old=w.workOrders||{sequence:0,orders:[]},existing=old.orders.find(t=>t.id===a.taskId),b=batchFor(w,a.type==='create'?a.datasetId:existing?.datasetId);
  const permission=a.type==='return'?'reject':['accept','arbitrate','startSampling','recordSampling','finishSampling'].includes(a.type)?'approve':'edit';const access=scope(w,s,actorId,space,b,permission);if(!access.ok)return access;
- const management=['create','reassign'].includes(a.type);if(management&&!isManager(s,actorId,space,b.projectId))return fail('只有项目负责人或管理员可以分派工单');
+ const management=['create','reassign','extendDeadline'].includes(a.type);if(management&&!isManager(s,actorId,space,b.projectId))return fail('只有项目负责人或管理员可以分派工单');
  // Handling a rejection/dispute is allowed after revocation; production and acceptance are not.
  if(['create','claim','submit','accept','startSampling','recordSampling','finishSampling'].includes(a.type)){
   const g=authorizeAction(s,actorId,space,w,'data',{type:['accept','startSampling','recordSampling','finishSampling'].includes(a.type)?'checkQuality':'submit',datasetId:b.datasetId,at});if(!g.ok)return g;
@@ -42,7 +43,7 @@ export function applyWorkOrder(w,s,actorId,space,a,at=new Date().toISOString()){
  }else{
   if(!task)return fail('工单不存在');
   const operator=task.assigneeId===actorId,reviewer=task.reviewerId===actorId;
-  if(['return','dispute','arbitrate','reassign'].includes(a.type)&&!a.note?.trim())return fail('请填写处理原因');
+  if(['return','dispute','arbitrate','reassign','extendDeadline'].includes(a.type)&&!a.note?.trim())return fail('请填写处理原因');
   switch(a.type){
    case 'startSampling':case 'recordSampling':case 'finishSampling':{if(activeApproval(task))return fail('初审已通过，抽检证据已冻结');const result=applySampling(task,batch,a,actorId,at);if(!result.ok)return result;break;}
    case 'claim':if(!operator||!['assigned','rework'].includes(task.status))return fail('仅指定标注人可领取待办');task.status='claimed';break;
@@ -51,16 +52,20 @@ export function applyWorkOrder(w,s,actorId,space,a,at=new Date().toISOString()){
    case 'return':if(actorId!==approvalActor(task)||task.status!=='review')return fail('仅指定审核人可退回待验收工单');{const fn=b.type==='image'?applyImageBatchAction:applyTextBatchAction;for(const row of [...batch.records]){if(!['review','approved'].includes(row.status))continue;const r=fn(batch,{type:row.status==='review'?'reject':'reopen',taskId:row.id,recordId:row.id,note:a.note,at});if(!r.ok)return r;batch=r.batch;}next[b.type==='image'?'imageBatches':'textBatches'][b.datasetId]=batch;}if(task.samplingRounds?.length){const round=task.samplingRounds.at(-1);if(!round.returnedAt){round.returnedAt=at;round.returnReason=a.note;}}const cycle=activeApproval(task);if(cycle){cycle.returnedAt=at;cycle.returnedBy=actorId;cycle.returnReason=a.note;}task.status='rework';task.returnReason=a.note;break;
    case 'dispute':if(!operator||task.status!=='rework')return fail('仅标注人可对退回结果提起争议');task.status='disputed';break;
    case 'arbitrate':if(task.status!=='disputed'||operator||reviewer||task.approvalChain?.includes(actorId)||!['rework','review'].includes(a.decision))return fail('须由独立审核成员仲裁，选择重新返工或重新审核');if(a.decision==='review'){const fn=b.type==='image'?applyImageBatchAction:applyTextBatchAction;for(const row of [...batch.records]){if(!['todo','rework'].includes(row.status))continue;const r=fn(batch,{type:b.type!=='image'&&row.status==='rework'?'resubmit':'submit',taskId:row.id,recordId:row.id,label:row.label,note:a.note,at});if(!r.ok)return r;batch=r.batch;}next[b.type==='image'?'imageBatches':'textBatches'][b.datasetId]=batch;}task.status=a.decision;break;
+   case 'extendDeadline':{
+    if(task.status==='accepted'||!Number.isFinite(Date.parse(a.dueAt))||Date.parse(a.dueAt)<=Math.max(Date.parse(at),Date.parse(task.dueAt)))return fail('仅未完成工单可延期，新期限须晚于原期限和当前时间');
+    const before={dueAt:task.dueAt,assigneeId:task.assigneeId};task.dueAt=a.dueAt;recordDeadlineChange(task,before,actorId,a.type,a.note,at);break;
+   }
    case 'reassign':{
-    if(!['assigned','claimed','rework'].includes(task.status)||Date.parse(at)<=Date.parse(task.dueAt)||a.assigneeId===task.assigneeId)return fail('仅超时的未完成工单可转派给其他成员');
+    if(!['assigned','claimed','rework'].includes(task.status)||Date.parse(at)<Date.parse(task.dueAt)||a.assigneeId===task.assigneeId)return fail('仅超时的未完成工单可转派给其他成员');
     // Preserve submitted rows: transfer is only safe after they have been returned.
     if(batch.records.some(r=>!['todo','rework'].includes(r.status)))return fail('请先由审核人退回已提交样本，再转派');
-    const result=assign(a.assigneeId,task.reviewerId,a.dueAt);if(!result.ok)return result;task.assigneeId=a.assigneeId;task.dueAt=a.dueAt;task.status='assigned';break;
+    const before={dueAt:task.dueAt,assigneeId:task.assigneeId};const result=assign(a.assigneeId,task.reviewerId,a.dueAt);if(!result.ok)return result;task.assigneeId=a.assigneeId;task.dueAt=a.dueAt;task.status='assigned';recordDeadlineChange(task,before,actorId,a.type,a.note,at);break;
    }
    default:return fail('不支持的工单操作');
   }
  }
- task.history.push({action:a.type,actorId,at,note:a.note||'',status:task.status,assigneeId:task.assigneeId,reviewerId:task.reviewerId});
+ task.history.push({action:a.type,actorId,at,note:a.note?.trim()||'',status:task.status,assigneeId:task.assigneeId,reviewerId:task.reviewerId});
  return {ok:true,workspace:next,task};
 }
 // Apply before every existing sample mutation; unmanaged batches retain their original behavior.
@@ -82,7 +87,7 @@ export function validateWorkOrders(w,settings,space){
  const ids=new Set(),datasets=new Set();
  for(const t of state.orders){const b=batchFor(w,t.datasetId);
   if(!/^WORK-[1-9]\d*$/.test(t.id)||Number(t.id.slice(5))>state.sequence||ids.has(t.id)||datasets.has(t.datasetId)||!b||b.projectId!==t.projectId||!Object.hasOwn(workStatuses,t.status)||t.assigneeId===t.reviewerId||!Number.isFinite(Date.parse(t.dueAt))||!Array.isArray(t.history)||!t.history.length)bad();
-  validateApprovals(t,b,settings);validateSampling(t,b);ids.add(t.id);datasets.add(t.datasetId);
+  validateDeadlineChanges(t,settings);validateApprovals(t,b,settings);validateSampling(t,b);ids.add(t.id);datasets.add(t.datasetId);
   if(t.history.some(h=>!settings.users.some(u=>u.id===h.actorId)||!Number.isFinite(Date.parse(h.at))||!Object.hasOwn(workStatuses,h.status))||b.records.some(r=>r.reviewerId!==t.reviewerId))bad();
   if(![t.assigneeId,t.reviewerId].every(id=>settings.users.some(u=>u.id===id))||!settings.projects.some(p=>p.id===t.projectId&&p.spaceId===space))bad();
   if(t.status==='accepted'&&(t.acceptedBy!==(t.approvalChain?.at(-1)||t.reviewerId)||t.acceptedRevision!==b.revision||(b.quality?.revision??b.quality?.sourceRevision)!==b.revision||b.records.some(r=>r.status!=='approved')||b.quality?.status!=='passed'))bad();

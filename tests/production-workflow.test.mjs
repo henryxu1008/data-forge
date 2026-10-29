@@ -127,3 +127,26 @@ test('feedback corrections inherit multi-level review and sampling without downg
  delivery('create',{projectId:'PRJ-001',versionId:v.id,customerId:'wangyue'});delivery('package',{checksum:'test',qualityReportId:'q',licenseRef:'l',manifest:['data.json']});delivery('submit');delivery('accept',{note:'验收'},'wangyue');delivery('openFeedback',{note:'纠错'},'wangyue');
  const r=createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',assigneeId:'liyi',reviewerId:'wangyue',dueAt},at);assert.equal(r.ok,true,r.error);assert.deepEqual(r.task.approvalChain,chain);assert.deepEqual(r.task.samplingPolicy,{rate:100,minimum:1,threshold:100});f.p.workspaces.demo=r.workspace;assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
 });
+
+test('deadline boundaries, completed work and stage ownership produce accurate non-mutating todos',async()=>{
+ const {workTiming,workOwner}=await import('../src/production-deadlines.js');const f=multiFixture();assignMulti(f);const t=workspace(f).workOrders.orders[0],before=structuredClone(workspace(f));
+ assert.equal(workTiming(t,'2026-10-29T08:59:59Z').state,'normal');assert.equal(workTiming(t,at).state,'soon');assert.equal(workTiming(t,dueAt).state,'overdue');assert.equal(workOwner(t),'liyi');
+ assert.equal(unifiedTodos(workspace(f),dueAt).find(x=>x.taskId===t.id).deadlineState,'overdue');assert.deepEqual(workspace(f),before);
+ readyMulti(f);assert.equal(workOwner(workspace(f).workOrders.orders[0]),'wangyue');work(f,'accept',{note:'初审'},'wangyue');assert.equal(workOwner(workspace(f).workOrders.orders[0]),'zhangmin');work(f,'accept',{note:'复审'},'zhangmin');work(f,'accept',{note:'终审'},'henry','2026-10-30T10:00:00Z');
+ const done=workspace(f).workOrders.orders[0];assert.equal(workTiming(done,'2099-01-01').state,'completed');assert.equal(workTiming(done,at).completedLate,true);assert.equal(workOwner(done),null);assert.ok(!unifiedTodos(workspace(f),'2099-01-01').some(x=>x.taskId===t.id));
+ assert.equal(workOwner({...t,status:'disputed'}),null);
+});
+test('deadline extension and overdue transfer retain original evidence and reject unauthorized or invalid changes',()=>{
+ const f=fixture();assign(f);const attempt=(extra,actor='henry',time=at)=>applyWorkOrder(workspace(f),f.p.settings,actor,'demo',{type:'extendDeadline',taskId:'WORK-1',note:'计划调整',...extra},time);
+ for(const dueAt of ['bad','2026-10-28T00:00:00Z','2026-10-30T09:00:00Z'])assert.equal(attempt({dueAt}).ok,false);
+ assert.equal(attempt({dueAt:'2026-11-01T00:00:00Z'},'liyi').ok,false);assert.equal(attempt({dueAt:'2026-11-01T00:00:00Z',note:' '}).ok,false);
+ const b=structuredClone(workspace(f).textBatches[f.id]);work(f,'extendDeadline',{dueAt:'2026-11-01T00:00:00Z',note:'  依赖延迟  '},'henry',dueAt);let t=workspace(f).workOrders.orders[0];assert.equal(t.deadlineChanges[0].wasOverdue,true);assert.equal(t.deadlineChanges[0].fromDueAt,dueAt);assert.deepEqual(workspace(f).textBatches[f.id],b);
+ assert.equal(attempt({dueAt:'2026-11-01T00:00:00Z'}).ok,false);work(f,'reassign',{assigneeId:'zhangmin',dueAt:'2026-11-02T00:00:00Z',note:'超时转派'},'henry','2026-11-01T00:00:00Z');t=workspace(f).workOrders.orders[0];assert.equal(t.deadlineChanges[1].fromAssigneeId,'liyi');assert.equal(t.deadlineChanges[1].toAssigneeId,'zhangmin');assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+ const p=structuredClone(f.p);p.workspaces.demo.workOrders.orders[0].deadlineChanges[0].wasOverdue=false;assert.throws(()=>decodeSnapshot(encodeSnapshot(p)),/期限/);
+});
+test('review-stage extensions preserve approvals while transfer and completed extensions remain blocked',()=>{
+ const f=multiFixture();assignMulti(f);readyMulti(f);work(f,'accept',{note:'初审'},'wangyue');const before=structuredClone(workspace(f).workOrders.orders[0].approvalCycles);
+ work(f,'extendDeadline',{dueAt:'2026-11-02T00:00:00Z',note:'延长复审时间'},'henry');assert.deepEqual(workspace(f).workOrders.orders[0].approvalCycles,before);
+ assert.equal(applyWorkOrder(workspace(f),f.p.settings,'henry','demo',{type:'reassign',taskId:'WORK-1',assigneeId:'linyue',dueAt:'2026-11-04T00:00:00Z',note:'审核中改派'},'2026-11-03T00:00:00Z').ok,false);
+ work(f,'accept',{note:'复审'},'zhangmin');work(f,'accept',{note:'最终验收'},'henry');assert.equal(applyWorkOrder(workspace(f),f.p.settings,'henry','demo',{type:'extendDeadline',taskId:'WORK-1',dueAt:'2026-11-04T00:00:00Z',note:'改历史'},at).ok,false);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+});
