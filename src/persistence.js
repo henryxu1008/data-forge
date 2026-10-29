@@ -1,3 +1,4 @@
+import {validateWorkOrders} from './production-workflow.js';
 import {validateDeliveryState} from './delivery-lifecycle-state.js';
 import {validateProductionFlow} from './p1-production-flow.js';
 import {validateAIAnnotation} from './ai-annotation-state.js';
@@ -30,7 +31,7 @@ export function decodeSnapshot(content){
   versions.push(...w.versions.map(v=>({...v,id:`customer:${v.version}`})));
   for(const key of ['trainings','models','evaluations','services','calls'])requireArray(w.modelState?.[key],`模型 ${key}`);
    validateProductionFlow(w);versions.push(...(w.flow?.versions||[]));
-   validateAIAnnotation(w);validateGovernance(w);validateDeliveryState(w.delivery,versions);for(const o of w.delivery?.orders||[]){if(!p.settings.users.some(u=>u.id===o.customerId)||!p.settings.projects.some(pr=>pr.id===o.projectId&&pr.spaceId===spaceId))throw new Error('交付客户或项目引用缺失。');}const m=w.modelState;
+   validateAIAnnotation(w);validateGovernance(w);validateDeliveryState(w.delivery,versions);validateWorkOrders(w,p.settings,spaceId);for(const o of w.delivery?.orders||[]){if(!p.settings.users.some(u=>u.id===o.customerId)||!p.settings.projects.some(pr=>pr.id===o.projectId&&pr.spaceId===spaceId))throw new Error('交付客户或项目引用缺失。');}const m=w.modelState;
   for(const t of m.trainings){if(!versions.some(v=>v.id===t.dataVersionId)||t.dataVersion?.id!==t.dataVersionId||!t.params)throw new Error('训练数据版本引用缺失。')}
   for(const x of m.models){if(!m.trainings.some(t=>t.id===x.trainingId&&t.modelVersionId===x.id&&t.status==='completed'))throw new Error('模型缺少成功训练来源。')}
   for(const x of m.evaluations){if(!m.models.some(t=>t.id===x.modelVersionId)||x.modelSnapshot?.id!==x.modelVersionId||!versions.some(v=>v.id===x.dataVersionId))throw new Error('评测来源缺失。')}
