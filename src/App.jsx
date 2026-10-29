@@ -1,3 +1,4 @@
+import {captureChanges} from './asset-changes.js';
 import {applyWorkOrder,checkWorkOrderData} from './production-workflow.js';
 import {createDeliveryCorrection} from './delivery-correction.js';
 import WorkOrdersView from './WorkOrdersView.jsx';
@@ -83,7 +84,7 @@ export function App(){
  const record=(event,base=ref.current)=>({id:`BUSINESS-${Date.now()}-${++sequence.current}`,at:new Date().toISOString(),actor:base.settings.users.find(u=>u.id===base.actorId)?.name||base.actorId,spaceId:base.activeSpaceId,space:base.settings.spaces.find(s=>s.id===base.activeSpaceId)?.name,result:'成功',before:{},after:{},...event});
  function ctx(base=ref.current,working=base.workspaces[base.activeSpaceId]){const q=base.settings.quotas.find(q=>q.spaceId===base.activeSpaceId);return {versions:workspaceVersions(working),acceptanceFactory:(model,source,action)=>makeEvaluationAcceptance(working,model,source,action),modelState:working.modelState,textBatches:working.textBatches,imageBatches:working.imageBatches,apps:base.settings.apiApps,spaceId:base.activeSpaceId,concurrency:q?.concurrency??0,gpu:q?.gpu??0}}
  function saveWorkspace(next,events=[],base=ref.current,alerts=true,workspaceId=base.activeSpaceId){
-  const previous=base.workspaces[workspaceId];let completion=next.completion,settings=base.settings;
+  const previous=base.workspaces[workspaceId];next=captureChanges(previous,next,base.actorId,new Date().toISOString());let completion=next.completion,settings=base.settings;
   if(alerts)for(const failure of failureTransitions(previous,next)){
    const alertResult=applyCompletionAction(completion,{type:'recordAlert',target:failure,reason:failure.reason,at:new Date().toISOString()},ctx(base,next));completion=alertResult.state;
    const eventName={training:'训练任务失败',deployment:'服务部署失败',evaluation:'评测失败',index:'知识索引失败',document:'文档解析失败'}[failure.type];
@@ -200,7 +201,7 @@ export function App(){
   if(!canAccess(base.settings,base.actorId,base.activeSpaceId,'edit').ok)return;
   const newProjects=next.projects.filter(pr=>!base.settings.projects.some(p=>p.id===pr.id&&p.spaceId===base.activeSpaceId));
   const settings=newProjects.length?{...base.settings,projects:[...base.settings.projects,...newProjects.map(pr=>({id:pr.id,name:pr.name,spaceId:base.activeSpaceId,ownerId:base.actorId}))],members:base.settings.members.map(m=>m.userId===base.actorId&&m.spaceId===base.activeSpaceId?{...m,projectIds:[...new Set([...m.projectIds,...newProjects.map(pr=>pr.id)])]}:m)}:base.settings;
-  commit({...base,settings,workspaces:{...base.workspaces,[base.activeSpaceId]:{...old,production:next}}});
+  saveWorkspace({...old,production:next},[],{...base,settings});
  },[commit]);
  function onSettingsChange(update){
   const base=ref.current;if(!gate('members'))return;const next=typeof update==='function'?update(base.settings):update;
