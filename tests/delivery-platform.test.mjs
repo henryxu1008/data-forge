@@ -52,3 +52,27 @@ test('sharing licence revocation blocks acceptance and includes deliveries in im
  assert.equal(applyWorkspaceDelivery(current,p.settings,'customer','demo',{type:'accept',orderId:'DLV-1',note:'pass'},at).ok,false);
  assert.ok(affectedAssets(current,'data:D').some(a=>a.type==='delivery'&&a.orderId==='DLV-1'));
 });
+
+test('recipient must see every source project before creation and revision, including fresh access at submit',()=>{
+ const p=fixture();const w=p.workspaces.demo;w.textBatches.D.versions[0].sourceProjects=['P2'];p.settings.members.find(m=>m.userId==='producer').projectIds.push('P2');
+ const before=structuredClone(w);assert.equal(applyWorkspaceDelivery(w,p.settings,'producer','demo',{type:'create',projectId:'P1',versionId:'v1',customerId:'customer'},at).ok,false);assert.deepEqual(w,before);
+ p.settings.members.find(m=>m.userId==='customer').projectIds.push('P2');create(p);act(p,'package',{orderId:'DLV-1',checksum:'x',qualityReportId:'q',licenseRef:'l',manifest:['data']});
+ p.settings.members.find(m=>m.userId==='customer').projectIds=['P1'];assert.equal(applyWorkspaceDelivery(p.workspaces.demo,p.settings,'producer','demo',{type:'submit',orderId:'DLV-1'},at).ok,false);
+ p.settings.members.find(m=>m.userId==='customer').projectIds.push('P2');act(p,'submit',{orderId:'DLV-1'});act(p,'accept',{orderId:'DLV-1',note:'通过'},'customer');act(p,'openFeedback',{orderId:'DLV-1',note:'问题'},'customer');
+ p.workspaces.demo.textBatches.D.versions[1].sourceProjects=['P2'];p.settings.members.find(m=>m.userId==='customer').projectIds=['P1'];assert.equal(applyWorkspaceDelivery(p.workspaces.demo,p.settings,'producer','demo',{type:'requestRevision',orderId:'DLV-1',newVersionId:'v2',feedbackId:'DLV-1-FB-1',note:'补交'},at).ok,false);
+});
+
+test('designated recipient cannot package, submit or create a revision and retains acceptance eligibility',()=>{
+ const p=fixture();create(p);
+ for(const a of [{type:'package',checksum:'x',qualityReportId:'q',licenseRef:'l',manifest:['data']},{type:'submit'},{type:'requestRevision',newVersionId:'v2',note:'自行补交'}])assert.equal(deliveryAccess(p.workspaces.demo,p.settings,'customer','demo',{...a,orderId:'DLV-1'}).ok,false);
+ submit(p);act(p,'accept',{orderId:'DLV-1',note:'由独立验收人签收'},'customer');assert.equal(p.workspaces.demo.delivery.orders[0].status,'accepted');
+});
+
+test('feedback closes after a nested rejected replacement is successfully revised, with evidence preserved on restore',()=>{
+ const p=fixture();const v=structuredClone(p.workspaces.demo.textBatches.D.versions[1]);v.id='v3';p.workspaces.demo.textBatches.D.versions.push(v);
+ create(p);submit(p);act(p,'accept',{orderId:'DLV-1',note:'通过'},'customer');act(p,'openFeedback',{orderId:'DLV-1',note:'售后问题'},'customer');act(p,'requestRevision',{orderId:'DLV-1',newVersionId:'v2',feedbackId:'DLV-1-FB-1',note:'首轮补交'});submit(p,'DLV-2');act(p,'reject',{orderId:'DLV-2',note:'仍需修正'},'customer');act(p,'requestRevision',{orderId:'DLV-2',newVersionId:'v3',note:'再次补交'});submit(p,'DLV-3');
+ assert.equal(applyWorkspaceDelivery(p.workspaces.demo,p.settings,'producer','demo',{type:'closeFeedback',orderId:'DLV-1',feedbackId:'DLV-1-FB-1',note:'尚未签收'},at).ok,false);
+ act(p,'accept',{orderId:'DLV-3',note:'新版本通过'},'customer');act(p,'closeFeedback',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',note:'补交完成'});
+ const f=p.workspaces.demo.delivery.orders.find(o=>o.id==='DLV-1').feedback[0];assert.equal(f.resolvedRevisionId,'DLV-3');assert.equal(unifiedTodos(p.workspaces.demo).filter(t=>t.target==='deliveries').length,0);assert.deepEqual(decodeSnapshot(encodeSnapshot(p)).platform,p);
+ const bad=structuredClone(p);bad.workspaces.demo.delivery.orders.find(o=>o.id==='DLV-1').feedback[0].resolvedRevisionId='DLV-1';assert.throws(()=>decodeSnapshot(encodeSnapshot(bad)),/交付/);
+});
