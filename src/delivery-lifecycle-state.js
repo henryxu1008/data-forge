@@ -31,6 +31,7 @@ export function applyDeliveryAction(state,action,context={}) {
     case 'package':
       if(!inStatus('draft'))return err('只有草稿可生成交付包');
       if(!versionEligible(o.versionId,project))return err('当前数据版本不可交付');
+      if(!Array.isArray(a.manifest)||!a.manifest.length||a.manifest.some(x=>required(x,'文件')))return err('交付文件清单不能为空且必须为文件名数组');
       if(required(a.checksum,'校验和')||required(a.qualityReportId,'质量报告')||required(a.licenseRef,'许可引用'))return err('交付证据不完整');
       o.package={versionId:o.versionId,checksum:a.checksum,qualityReportId:a.qualityReportId,licenseRef:a.licenseRef,manifest:unique(a.manifest||[])};
       break;
@@ -40,6 +41,7 @@ export function applyDeliveryAction(state,action,context={}) {
       o.status='submitted';break;
     case 'accept':
       if(!inStatus('submitted'))return err('仅已提交的交付单可验收');
+      if(!versionEligible(o.versionId,project))return err('数据版本已不符合验收条件');
       if(required(a.note,'验收结论'))return err('验收结论不能为空');
       o.status='accepted';o.acceptedBy=actorId;o.acceptedAt=at;break;
     case 'reject':
@@ -53,6 +55,7 @@ export function applyDeliveryAction(state,action,context={}) {
     case 'closeFeedback':{
       const f=o.feedback.find(x=>x.id===a.feedbackId);
       if(!f||f.status!=='open')return err('反馈不存在或已经关闭');
+      if(f.revisionId&&!s.orders.some(x=>x.id===f.revisionId&&x.status==='accepted'))return err('关联补交尚未验收，不能关闭反馈');
       if(required(a.note,'处理说明'))return err('处理说明不能为空');
       f.status='closed';f.resolution=a.note;f.resolvedBy=actorId;f.resolvedAt=at;break;
     }
@@ -61,8 +64,15 @@ export function applyDeliveryAction(state,action,context={}) {
       if(required(a.newVersionId,'新版本'))return err('缺少补交版本');
       if(a.newVersionId===o.versionId)return err('补交必须使用新版本');
       if(!versionEligible(a.newVersionId,project))return err('补交版本不满足交付条件');
+      if(required(a.note,'补交原因'))return err('补交原因不能为空');
+      const feedback=a.feedbackId?o.feedback.find(f=>f.id===a.feedbackId&&f.status==='open'):null;
+      if(inStatus('accepted')&&!feedback)return err('已验收交付补交必须关联未关闭反馈');
+      if(a.feedbackId&&!feedback)return err('反馈不存在或已经关闭');
+      if(o.revisions.some(id=>{const r=s.orders.find(x=>x.id===id);return r&&['draft','submitted'].includes(r.status)}))return err('已有进行中的补交单');
       const id='DLV-'+(++s.sequence);
+      if(feedback)feedback.revisionId=id;
       const next={id,projectId:project,customerId:o.customerId,versionId:a.newVersionId,status:'draft',revisionOf:o.id,revisions:[],package:null,feedback:[],history:[]};
+      appendHistory(o,'requestRevision',actorId,at,a.note);
       appendHistory(next,'createRevision',actorId,at,a.note||'');o.revisions.push(id);s.orders.unshift(next);events(s,'requestRevision',o,at,actorId);events(s,'createRevision',next,at,actorId);return {ok:true,state:s,order:next};
     }
     case 'cancel':
