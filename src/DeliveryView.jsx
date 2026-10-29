@@ -1,7 +1,6 @@
 import React,{useState,useEffect} from 'react';
 import {Button,PageHeader,Panel,Field,Empty,Badge} from './ui.jsx';
-import {deliveryAccess,deliveryEligibility} from './delivery-platform.js';
-import {canAccess} from './platform-policy.js';
+import {deliveryAccess,deliveryEligibility,deliveryRecipientAccess} from './delivery-platform.js';
 import './completion.css';
 const names={draft:'待准备',submitted:'待客户验收',accepted:'已签收',rejected:'已退回',cancelled:'已取消'};
 export default function DeliveryView({w,platform,onDeliveryAction,versions,request,onNavigate}){
@@ -14,7 +13,7 @@ export default function DeliveryView({w,platform,onDeliveryAction,versions,reque
  const allowed=type=>order&&deliveryAccess(w,platform.settings,platform.actorId,platform.activeSpaceId,{type,orderId:order.id}).ok;
  function act(type,extra={}){const r=onDeliveryAction({type,orderId:order?.id,note,...extra});if(!r.ok){setError(r.error);return}setError('');setNote('');setSelected(r.order.id)}
  const eligible=versions.filter(v=>deliveryEligibility(w,v.id,v.projectId).ok);
- const recipients=platform.settings.users.filter(u=>u.id!==platform.actorId&&version&&canAccess(platform.settings,u.id,platform.activeSpaceId,'approve',version.projectId).ok);
+ const recipients=platform.settings.users.filter(u=>u.id!==platform.actorId&&version&&deliveryRecipientAccess(w,platform.settings,u.id,platform.activeSpaceId,version.id,version.projectId).ok);
  return <div className="cl-page"><PageHeader title="交付与验收" description="冻结发布版本 → 登记交付证据 → 客户验收 → 反馈与补交"/>
  <p className="cl-hint">本地流程演示：验收成员代表客户操作。登记外部交付包证据，不会实际传输文件或通知客户。</p>
  {error&&<div role="alert" className="cl-error">{error}</div>}
