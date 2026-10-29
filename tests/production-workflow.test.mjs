@@ -206,3 +206,20 @@ test('a rejected managed correction starts a new work order using the rejected f
  }
  d('closeFeedback',{feedbackId:'DLV-1-FB-1',note:'新一轮纠错已签收'});assert.equal(workspace(f).delivery.orders.find(o=>o.id==='DLV-1').feedback[0].correctionHistory.length,1);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
 });
+
+test('returned transferred text/image records belong to the current annotator while original submissions remain attributable',()=>{
+ for(const image of [false,true])for(const all of [false,true])for(const legacy of [false,true]){
+  const f=fixture(image),key=image?'imageBatches':'textBatches',owner=image?'assignee':'annotator';f.p.settings.members.find(m=>m.userId==='zhangmin'&&m.spaceId==='demo').projectIds.push(image?'PRJ-003':'PRJ-001');
+  assign(f);work(f,'claim',{},'liyi');const rows=workspace(f)[key][f.id].records;
+  for(const row of all?rows:rows.slice(0,1))data(f,'submit',image?{recordId:row.id,boxes:[],noDefect:true}:{taskId:row.id,label:'物流'});
+  const submitted=structuredClone(workspace(f)[key][f.id].records.filter(r=>r.status==='review'));
+  work(f,'reassign',{assigneeId:'zhangmin',dueAt:'2026-11-02T00:00:00Z',note:'保留原提交，转交剩余工作'},'henry','2026-10-31T00:00:00Z');work(f,'claim',{},'zhangmin');
+  for(const row of workspace(f)[key][f.id].records.filter(r=>r.status==='todo'))data(f,'submit',image?{recordId:row.id,boxes:[],noDefect:true}:{taskId:row.id,label:'物流'},'zhangmin');
+  work(f,'submit',{},'zhangmin');data(f,'approve',{taskId:submitted[0].id,recordId:submitted[0].id});work(f,'return',{note:'需要当前负责人修正'},'wangyue');
+  if(legacy){for(const row of workspace(f)[key][f.id].records.filter(r=>submitted.some(s=>s.id===r.id)))row[owner]='李一';f.p=decodeSnapshot(encodeSnapshot(f.p)).platform;}
+  else assert.ok(workspace(f)[key][f.id].records.every(r=>r[owner]==='张敏'));
+  work(f,'claim',{},'zhangmin');assert.equal(checkWorkOrderData(workspace(f),'liyi',f.id,{type:'saveDraft'}).ok,false);
+  for(const row of workspace(f)[key][f.id].records){assert.equal(row[owner],'张敏');const original=submitted.find(s=>s.id===row.id);if(original)assert.deepEqual(row.history.slice(0,original.history.length),original.history);data(f,'saveDraft',image?{recordId:row.id,boxes:[],noDefect:true,note:'由当前负责人修正'}:{taskId:row.id,label:'物流',note:'由当前负责人修正'},'zhangmin');data(f,image||row.status==='todo'?'submit':'resubmit',image?{recordId:row.id,boxes:[],noDefect:true,note:'返工完成'}:{taskId:row.id,label:'物流',note:'返工完成'},'zhangmin');}
+  work(f,'submit',{},'zhangmin');approveRows(f);work(f,'accept',{},'wangyue');data(f,'publish',{note:'转派后返工验收通过'});assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+ }
+});
