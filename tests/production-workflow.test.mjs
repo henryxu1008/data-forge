@@ -175,3 +175,19 @@ test('text/image rejected correction can start a new immutable attempt and close
   const bad=structuredClone(f.p);bad.workspaces.demo.delivery.orders.find(o=>o.id==='DLV-1').feedback[0].correctionHistory[0].revisionId='DLV-3';assert.throws(()=>decodeSnapshot(encodeSnapshot(bad)),/工单/);
  }
 });
+
+
+test('already assigned text/image batches can enter work-order management without rewriting assignment history',()=>{
+ for(const image of [false,true]){const f=fixture(image),key=image?'imageBatches':'textBatches';const fn=image?applyImageBatchAction:applyTextBatchAction;const r=fn(workspace(f)[key][f.id],{type:'assign',assignee:'李一',at});assert.equal(r.ok,true,r.error);workspace(f)[key][f.id]=r.batch;const before=structuredClone(r.batch);assign(f);const after=workspace(f)[key][f.id];assert.equal(after.revision,before.revision);assert.deepEqual(after.records.map(({reviewerId,...r})=>r),before.records);work(f,'claim',{},'liyi');}
+});
+
+test('overdue partial and fully submitted batches transfer without changing submitted text/image evidence',()=>{
+ for(const image of [false,true])for(const all of [false,true]){
+  const f=fixture(image),key=image?'imageBatches':'textBatches';assign(f);work(f,'claim',{},'liyi');const rows=workspace(f)[key][f.id].records;const submitted=all?rows:rows.slice(0,1);for(const row of submitted)data(f,'submit',image?{recordId:row.id,boxes:[],noDefect:true}:{taskId:row.id,label:'物流'});
+  const before=structuredClone(workspace(f)[key][f.id].records.filter(r=>r.status==='review'));
+  work(f,'reassign',{assigneeId:'henry',dueAt:'2026-11-02T00:00:00Z',note:'原成员离岗，保留已提交样本'},'henry','2026-10-31T00:00:00Z');assert.deepEqual(workspace(f)[key][f.id].records.filter(r=>r.status==='review'),before);
+  assert.equal(checkWorkOrderData(workspace(f),'liyi',f.id,{type:'saveDraft'}).ok,false);work(f,'claim',{},'henry');
+  for(const row of workspace(f)[key][f.id].records.filter(r=>r.status==='todo'))data(f,'submit',image?{recordId:row.id,boxes:[],noDefect:true}:{taskId:row.id,label:'物流'},'henry');
+  assert.deepEqual(workspace(f)[key][f.id].records.filter(r=>before.some(x=>x.id===r.id)),before);work(f,'submit',{},'henry');approveRows(f);work(f,'accept',{},'wangyue');data(f,'publish',{note:'保留原提交后继续完成'});assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+ }
+});
