@@ -10,14 +10,14 @@
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:flows": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs",
     "test:p1": "node --test tests/p1-production-flow.test.mjs tests/p1-integration.test.mjs",
-    "test:all": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs tests/p1-production-flow.test.mjs tests/p1-integration.test.mjs tests/sites-worker.test.mjs tests/ai-annotation-flow.test.mjs tests/governance-flow.test.mjs tests/delivery-lifecycle.test.mjs",
+    "test:all": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs tests/p1-production-flow.test.mjs tests/p1-integration.test.mjs tests/sites-worker.test.mjs tests/ai-annotation-flow.test.mjs tests/governance-flow.test.mjs tests/delivery-lifecycle.test.mjs tests/delivery-platform.test.mjs",
     "test:static": "node scripts/check-p1-static.mjs",
     "test:ai": "node --test tests/ai-annotation-flow.test.mjs",
     "test:ai-static": "node scripts/check-ai-static.mjs",
     "test:governance": "node --test tests/governance-flow.test.mjs",
     "test:governance-static": "node scripts/check-governance-static.mjs",
-    "test:source": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs tests/p1-production-flow.test.mjs tests/sites-worker.test.mjs tests/delivery-lifecycle.test.mjs",
-    "test:delivery": "node --test tests/delivery-lifecycle.test.mjs"
+    "test:source": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs tests/p1-production-flow.test.mjs tests/sites-worker.test.mjs tests/delivery-lifecycle.test.mjs tests/delivery-platform.test.mjs",
+    "test:delivery": "node --test tests/delivery-lifecycle.test.mjs tests/delivery-platform.test.mjs"
   },
   "dependencies": {
     "@fontsource/noto-sans-sc": "^5.3.1",
