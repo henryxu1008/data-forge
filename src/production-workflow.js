@@ -77,7 +77,7 @@ export function checkWorkOrderData(w,actorId,datasetId,a){
  return fail('该操作不适用于受工单管理的批次');
 }
 export function validateWorkOrders(w,settings,space){
- if(w.workOrders===undefined){if(w.delivery?.orders.some(o=>o.feedback.some(f=>f.correction)))throw Error('纠错反馈缺少生产工单。');return;}
+ if(w.workOrders===undefined){if(w.delivery?.orders.some(o=>o.feedback.some(f=>f.correction||f.correctionHistory?.length)))throw Error('纠错反馈缺少生产工单。');return;}
  const bad=()=>{throw Error('生产工单快照或批次关联无效。')},state=w.workOrders;
  if(!state||!Number.isSafeInteger(state.sequence)||state.sequence<0||!Array.isArray(state.orders))bad();
  const ids=new Set(),datasets=new Set();
@@ -88,5 +88,16 @@ export function validateWorkOrders(w,settings,space){
   if(![t.assigneeId,t.reviewerId].every(id=>settings.users.some(u=>u.id===id))||!settings.projects.some(p=>p.id===t.projectId&&p.spaceId===space))bad();
   if(t.status==='accepted'&&(t.acceptedBy!==t.reviewerId||t.acceptedRevision!==b.revision||(b.quality?.revision??b.quality?.sourceRevision)!==b.revision||b.records.some(r=>r.status!=='approved')||b.quality?.status!=='passed'))bad();
  }
- for(const o of w.delivery?.orders||[])for(const f of o.feedback){if(!f.correction)continue;if(f.status==='closed'&&!correctionVersionMatches(w,f,(f.resolvedRevisionId?w.delivery.orders.find(x=>x.id===f.resolvedRevisionId):acceptedReplacement(w.delivery,f.revisionId))?.versionId))bad();const t=state.orders.find(t=>t.id===f.correction.taskId),b=batchFor(w,f.correction.datasetId);if(!t||!b||t.datasetId!==b.datasetId||t.projectId!==o.projectId||b.correction?.orderId!==o.id||b.correction?.feedbackId!==f.id||f.correction.sourceVersionId!==o.versionId||b.correction.sourceVersionId!==o.versionId)bad();}
+ for(const o of w.delivery?.orders||[])for(const f of o.feedback){
+  if(f.correctionHistory!==undefined&&!Array.isArray(f.correctionHistory))bad();
+  if(!f.correction){if(f.correctionHistory?.length)bad();continue;}
+  if(f.status==='closed'&&!correctionVersionMatches(w,f,(f.resolvedRevisionId?w.delivery.orders.find(x=>x.id===f.resolvedRevisionId):acceptedReplacement(w.delivery,f.revisionId))?.versionId))bad();
+  const attempts=[...(f.correctionHistory||[]),f.correction],taskIds=new Set();
+  for(const [i,c] of attempts.entries()){
+   const t=state.orders.find(t=>t.id===c.taskId),b=batchFor(w,c.datasetId),input=i?w.delivery.orders.find(x=>x.id===attempts[i-1].revisionId)?.versionSnapshot:o.versionSnapshot;
+   if(!t||!b||taskIds.has(t.id)||t.datasetId!==b.datasetId||t.projectId!==o.projectId||b.correction?.orderId!==o.id||b.correction?.feedbackId!==f.id||c.sourceVersionId!==o.versionId||b.correction.sourceVersionId!==o.versionId||(c.inputVersionId||c.sourceVersionId)!==input?.id||(b.correction.inputVersionId||b.correction.sourceVersionId)!==input?.id)bad();
+   taskIds.add(t.id);
+   if(i<attempts.length-1){const rejected=w.delivery.orders.find(x=>x.id===c.revisionId);if(!rejected||rejected.revisionOf!==o.id||!['rejected','cancelled'].includes(rejected.status)||rejected.versionSnapshot?.datasetId!==c.datasetId||t.status!=='accepted'||!settings.users.some(u=>u.id===c.actorId)||!Number.isFinite(Date.parse(c.at)))bad();}
+  }
+ }
 }
