@@ -89,3 +89,15 @@ test('managed correction descendants cannot substitute unrelated versions, inclu
  assert.equal(applyWorkspaceDelivery(workspace(f),f.p.settings,'henry','demo',{type:'closeFeedback',orderId:'DLV-1',feedbackId:'DLV-1-FB-1',note:'无关版本不能关闭'},at).ok,false);
  legacy('closeFeedback',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',note:'旧旁路关闭'});assert.throws(()=>decodeSnapshot(encodeSnapshot(f.p)),/工单/);
 });
+
+test('a rejected managed correction starts a new work order using the rejected frozen version',()=>{
+ const f=fixture();assign(f);work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'accept',{},'wangyue');const original=data(f,'publish',{note:'原版'}).version;
+ const d=(type,extra={},actor='henry')=>{const r=applyWorkspaceDelivery(workspace(f),f.p.settings,actor,'demo',{type,orderId:'DLV-1',...extra},at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;};const pack={checksum:'x',qualityReportId:'q',licenseRef:'l',manifest:['data']};
+ d('create',{projectId:'PRJ-001',versionId:original.id,customerId:'wangyue'});d('package',pack);d('submit');d('accept',{note:'通过'},'wangyue');d('openFeedback',{note:'纠错'},'wangyue');
+ let input=original;for(const [i,taskId] of ['WORK-2','WORK-3'].entries()){
+  const r=createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',assigneeId:'liyi',reviewerId:'wangyue',dueAt},at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;f.id=r.task.datasetId;assert.equal(r.task.id,taskId);assert.equal(workspace(f).textBatches[f.id].correction.inputVersionId||workspace(f).textBatches[f.id].correction.sourceVersionId,input.id);
+  work(f,'claim',{taskId},'liyi');submitRows(f);work(f,'submit',{taskId},'liyi');approveRows(f);work(f,'accept',{taskId},'wangyue');input=data(f,'publish',{note:'新工单纠错'}).version;
+  d('requestRevision',{newVersionId:input.id,feedbackId:'DLV-1-FB-1',note:'纠错补交'});const orderId='DLV-'+(i+2);d('package',{orderId,...pack});d('submit',{orderId});d(i?'accept':'reject',{orderId,note:i?'通过':'仍需修正'},'wangyue');
+ }
+ d('closeFeedback',{feedbackId:'DLV-1-FB-1',note:'新一轮纠错已签收'});assert.equal(workspace(f).delivery.orders.find(o=>o.id==='DLV-1').feedback[0].correctionHistory.length,1);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+});
