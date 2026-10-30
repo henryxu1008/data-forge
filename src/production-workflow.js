@@ -1,3 +1,4 @@
+import {validSamplingPolicy,applySampling,samplingPassed,validateSampling} from './production-sampling.js';
 import {correctionVersionMatches} from './delivery-correction-evidence.js';
 import {acceptedReplacement} from './delivery-lifecycle-state.js';
 import {canAccess,authorizeAction} from './platform-policy.js';
@@ -16,11 +17,11 @@ function scope(w,s,u,space,b,permission){
 export function applyWorkOrder(w,s,actorId,space,a,at=new Date().toISOString()){
  if(!Number.isFinite(Date.parse(at)))return fail('操作时间无效');
  const old=w.workOrders||{sequence:0,orders:[]},existing=old.orders.find(t=>t.id===a.taskId),b=batchFor(w,a.type==='create'?a.datasetId:existing?.datasetId);
- const permission=a.type==='return'?'reject':['accept','arbitrate'].includes(a.type)?'approve':'edit';const access=scope(w,s,actorId,space,b,permission);if(!access.ok)return access;
+ const permission=a.type==='return'?'reject':['accept','arbitrate','startSampling','recordSampling','finishSampling'].includes(a.type)?'approve':'edit';const access=scope(w,s,actorId,space,b,permission);if(!access.ok)return access;
  const management=['create','reassign'].includes(a.type);if(management&&!isManager(s,actorId,space,b.projectId))return fail('只有项目负责人或管理员可以分派工单');
  // Handling a rejection/dispute is allowed after revocation; production and acceptance are not.
- if(['create','claim','submit','accept'].includes(a.type)){
-  const g=authorizeAction(s,actorId,space,w,'data',{type:a.type==='accept'?'checkQuality':'submit',datasetId:b.datasetId,at});if(!g.ok)return g;
+ if(['create','claim','submit','accept','startSampling','recordSampling','finishSampling'].includes(a.type)){
+  const g=authorizeAction(s,actorId,space,w,'data',{type:['accept','startSampling','recordSampling','finishSampling'].includes(a.type)?'checkQuality':'submit',datasetId:b.datasetId,at});if(!g.ok)return g;
  }
  const next=structuredClone(w);next.workOrders=structuredClone(old);let task=next.workOrders.orders.find(t=>t.id===a.taskId),batch=batchFor(next,b.datasetId);
  function assignPending(user){
@@ -40,19 +41,21 @@ export function applyWorkOrder(w,s,actorId,space,a,at=new Date().toISOString()){
   next[b.type==='image'?'imageBatches':'textBatches'][b.datasetId]=batch;return {ok:true};
  }
  if(a.type==='create'){
+  if(a.samplingPolicy&&!validSamplingPolicy(a.samplingPolicy))return fail('抽检比例和合格阈值须在 0–100 之间，最低样本数须为正整数');
   if(workOrderFor(w,b.datasetId))return fail('该批次已关联生产工单');
   if(!b.records.length||b.records.some(r=>!['todo','rework'].includes(r.status))||b.versions.length)return fail('请选择已清洗、未发布且尚未提交审核的批次');
   const result=assign(a.assigneeId,a.reviewerId,a.dueAt);if(!result.ok)return result;
-  task={id:'WORK-'+(++next.workOrders.sequence),datasetId:b.datasetId,projectId:b.projectId,name:b.name,assigneeId:a.assigneeId,reviewerId:a.reviewerId,dueAt:a.dueAt,status:'assigned',history:[],acceptedRevision:null};next.workOrders.orders.unshift(task);
+  task={id:'WORK-'+(++next.workOrders.sequence),datasetId:b.datasetId,projectId:b.projectId,name:b.name,assigneeId:a.assigneeId,reviewerId:a.reviewerId,dueAt:a.dueAt,status:'assigned',history:[],acceptedRevision:null,...(a.samplingPolicy?{samplingPolicy:structuredClone(a.samplingPolicy),samplingRounds:[]}: {})};next.workOrders.orders.unshift(task);
  }else{
   if(!task)return fail('工单不存在');
   const operator=task.assigneeId===actorId,reviewer=task.reviewerId===actorId;
   if(['return','dispute','arbitrate','reassign'].includes(a.type)&&!a.note?.trim())return fail('请填写处理原因');
   switch(a.type){
+   case 'startSampling':case 'recordSampling':case 'finishSampling':{const result=applySampling(task,batch,a,actorId,at);if(!result.ok)return result;break;}
    case 'claim':if(!operator||!['assigned','rework'].includes(task.status))return fail('仅指定标注人可领取待办');{const result=assignPending(task.assigneeId);if(!result.ok)return result;}task.status='claimed';break;
    case 'submit':if(!operator||task.status!=='claimed'||batch.records.some(r=>!['review','approved'].includes(r.status)))return fail('须由领取人提交，且全部样本已提交审核');task.status='review';break;
-   case 'accept':if(!reviewer||task.status!=='review'||batch.records.some(r=>r.status!=='approved')||batch.quality?.status!=='passed'||(batch.quality.revision??batch.quality.sourceRevision)!==batch.revision)return fail('须由指定审核人验收，全部样本审核通过且当前修订质检通过');task.status='accepted';task.acceptedRevision=batch.revision;task.acceptedBy=actorId;break;
-   case 'return':if(!reviewer||task.status!=='review')return fail('仅指定审核人可退回待验收工单');{const fn=b.type==='image'?applyImageBatchAction:applyTextBatchAction;for(const row of [...batch.records]){if(!['review','approved'].includes(row.status))continue;const r=fn(batch,{type:row.status==='review'?'reject':'reopen',taskId:row.id,recordId:row.id,note:a.note,at});if(!r.ok)return r;batch=r.batch;}const result=assignPending(task.assigneeId);if(!result.ok)return result;}task.status='rework';task.returnReason=a.note;break;
+   case 'accept':if(!samplingPassed(task,batch))return fail('当前修订抽检未通过，不能验收');if(!reviewer||task.status!=='review'||batch.records.some(r=>r.status!=='approved')||batch.quality?.status!=='passed'||(batch.quality.revision??batch.quality.sourceRevision)!==batch.revision)return fail('须由指定审核人验收，全部样本审核通过且当前修订质检通过');task.status='accepted';task.acceptedRevision=batch.revision;task.acceptedBy=actorId;break;
+   case 'return':if(!reviewer||task.status!=='review')return fail('仅指定审核人可退回待验收工单');{const fn=b.type==='image'?applyImageBatchAction:applyTextBatchAction;for(const row of [...batch.records]){if(!['review','approved'].includes(row.status))continue;const r=fn(batch,{type:row.status==='review'?'reject':'reopen',taskId:row.id,recordId:row.id,note:a.note,at});if(!r.ok)return r;batch=r.batch;}const result=assignPending(task.assigneeId);if(!result.ok)return result;}if(task.samplingRounds?.length){const round=task.samplingRounds.at(-1);if(!round.returnedAt){round.returnedAt=at;round.returnReason=a.note;}}task.status='rework';task.returnReason=a.note;break;
    case 'dispute':if(!operator||task.status!=='rework')return fail('仅标注人可对退回结果提起争议');task.status='disputed';break;
    case 'arbitrate':if(task.status!=='disputed'||operator||reviewer||!['rework','review'].includes(a.decision))return fail('须由独立审核成员仲裁，选择重新返工或重新审核');if(a.decision==='review'){const fn=b.type==='image'?applyImageBatchAction:applyTextBatchAction;for(const row of [...batch.records]){if(!['todo','rework'].includes(row.status))continue;const r=fn(batch,{type:b.type!=='image'&&row.status==='rework'?'resubmit':'submit',taskId:row.id,recordId:row.id,label:row.label,note:a.note,at});if(!r.ok)return r;batch=r.batch;}next[b.type==='image'?'imageBatches':'textBatches'][b.datasetId]=batch;}task.status=a.decision;break;
    case 'reassign':{
@@ -84,7 +87,7 @@ export function validateWorkOrders(w,settings,space){
  const ids=new Set(),datasets=new Set();
  for(const t of state.orders){const b=batchFor(w,t.datasetId);
   if(!/^WORK-[1-9]\d*$/.test(t.id)||Number(t.id.slice(5))>state.sequence||ids.has(t.id)||datasets.has(t.datasetId)||!b||b.projectId!==t.projectId||!Object.hasOwn(workStatuses,t.status)||t.assigneeId===t.reviewerId||!Number.isFinite(Date.parse(t.dueAt))||!Array.isArray(t.history)||!t.history.length)bad();
-  ids.add(t.id);datasets.add(t.datasetId);
+  validateSampling(t,b);ids.add(t.id);datasets.add(t.datasetId);
   if(t.history.some(h=>!settings.users.some(u=>u.id===h.actorId)||!Number.isFinite(Date.parse(h.at))||!Object.hasOwn(workStatuses,h.status))||b.records.some(r=>r.reviewerId!==t.reviewerId))bad();
   if(![t.assigneeId,t.reviewerId].every(id=>settings.users.some(u=>u.id===id))||!settings.projects.some(p=>p.id===t.projectId&&p.spaceId===space))bad();
   if(t.status==='accepted'&&(t.acceptedBy!==t.reviewerId||t.acceptedRevision!==b.revision||(b.quality?.revision??b.quality?.sourceRevision)!==b.revision||b.records.some(r=>r.status!=='approved')||b.quality?.status!=='passed'))bad();

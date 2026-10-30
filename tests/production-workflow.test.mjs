@@ -60,6 +60,32 @@ test('AI-produced text and image corrections retain source links without inherit
  }
 });
 
+test('text/image sampling freezes selection, fails acceptance, and retains failed evidence through rework',()=>{
+ for(const image of [false,true]){
+  const f=fixture(image);work(f,'create',{datasetId:f.id,assigneeId:'liyi',reviewerId:'wangyue',dueAt,samplingPolicy:{rate:50,minimum:1,threshold:100}});
+  work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);
+  const tryAction=(type,extra={},actor='wangyue')=>applyWorkOrder(workspace(f),f.p.settings,actor,'demo',{type,taskId:'WORK-1',...extra},at);
+  assert.equal(tryAction('accept').ok,false);assert.equal(tryAction('startSampling',{},'liyi').ok,false);
+  work(f,'startSampling',{},'wangyue');let t=workspace(f).workOrders.orders[0],r=t.samplingRounds[0];const frozen=structuredClone(r);
+  assert.equal(r.sampleIds.length,Math.ceil(r.population.length/2));assert.equal(tryAction('startSampling').ok,false);assert.equal(tryAction('finishSampling').ok,false);
+  assert.equal(tryAction('recordSampling',{recordId:'outsider',verdict:'pass',note:'x'}).ok,false);
+  for(const recordId of r.sampleIds)work(f,'recordSampling',{recordId,verdict:'fail',note:'语义与标注不符'},'wangyue');
+  assert.equal(tryAction('recordSampling',{recordId:r.sampleIds[0],verdict:'pass',note:'覆盖'}).ok,false);
+  work(f,'finishSampling',{},'wangyue');assert.equal(tryAction('accept').ok,false);assert.equal(tryAction('startSampling').ok,false);
+  const failed=structuredClone(workspace(f).workOrders.orders[0].samplingRounds[0]);
+  work(f,'return',{note:'抽检不合格，全部返工'},'wangyue');work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'startSampling',{},'wangyue');
+  t=workspace(f).workOrders.orders[0];r=t.samplingRounds[1];assert.equal(t.samplingRounds[0].status,'failed');assert.deepEqual(t.samplingRounds[0].results,failed.results);assert.deepEqual(t.samplingRounds[0].population,frozen.population);
+  assert.ok(r.revision>frozen.revision);for(const recordId of r.sampleIds)work(f,'recordSampling',{recordId,verdict:'pass',note:'复核通过'},'wangyue');work(f,'finishSampling',{},'wangyue');work(f,'accept',{},'wangyue');data(f,'publish',{note:'抽检通过'});assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+  for(const corrupt of [p=>p.workspaces.demo.workOrders.orders[0].samplingRounds[1].sampleIds.push('forged'),p=>p.workspaces.demo.workOrders.orders[0].samplingRounds[1].passRate=0,p=>p.workspaces.demo.workOrders.orders[0].samplingPolicy.threshold=1]){const p=structuredClone(f.p);corrupt(p);assert.throws(()=>decodeSnapshot(encodeSnapshot(p)),/抽检/);}
+ }
+});
+test('sampling rejects invalid policies and stale results without mutating workspace',()=>{
+ const f=fixture();for(const policy of [{rate:0,minimum:1,threshold:100},{rate:101,minimum:1,threshold:100},{rate:20,minimum:1.5,threshold:100},{rate:20,minimum:1,threshold:NaN}])assert.equal(applyWorkOrder(workspace(f),f.p.settings,'henry','demo',{type:'create',datasetId:f.id,assigneeId:'liyi',reviewerId:'wangyue',dueAt,samplingPolicy:policy},at).ok,false);
+ work(f,'create',{datasetId:f.id,assigneeId:'liyi',reviewerId:'wangyue',dueAt,samplingPolicy:{rate:1,minimum:999,threshold:50}});work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'startSampling',{},'wangyue');const r=workspace(f).workOrders.orders[0].samplingRounds[0];assert.equal(r.sampleIds.length,2);
+ work(f,'recordSampling',{recordId:r.sampleIds[0],verdict:'pass',note:'依据'},'wangyue');work(f,'recordSampling',{recordId:r.sampleIds[1],verdict:'fail',note:'依据'},'wangyue');work(f,'finishSampling',{},'wangyue');assert.equal(workspace(f).workOrders.orders[0].samplingRounds[0].status,'passed');
+ workspace(f).textBatches[f.id].records[0].text+='被修改';const before=structuredClone(workspace(f));assert.equal(applyWorkOrder(workspace(f),f.p.settings,'wangyue','demo',{type:'accept',taskId:'WORK-1'},at).ok,false);assert.deepEqual(workspace(f),before);
+});
+
 test('already assigned text/image batches can enter work-order management without rewriting assignment history',()=>{
  for(const image of [false,true]){const f=fixture(image),key=image?'imageBatches':'textBatches';const fn=image?applyImageBatchAction:applyTextBatchAction;const r=fn(workspace(f)[key][f.id],{type:'assign',assignee:'李一',at});assert.equal(r.ok,true,r.error);workspace(f)[key][f.id]=r.batch;const before=structuredClone(r.batch);assign(f);const after=workspace(f)[key][f.id];assert.equal(after.revision,before.revision);assert.deepEqual(after.records.map(({reviewerId,...r})=>r),before.records);work(f,'claim',{},'liyi');}
 });
@@ -90,6 +116,17 @@ test('managed correction descendants cannot substitute unrelated versions, inclu
  assert.equal(applyWorkspaceDelivery(workspace(f),f.p.settings,'henry','demo',{type:'closeFeedback',orderId:'DLV-1',feedbackId:'DLV-1-FB-1',note:'无关版本不能关闭'},at).ok,false);
  legacy('closeFeedback',{orderId:'DLV-1',feedbackId:'DLV-1-FB-1',note:'旧旁路关闭'});assert.throws(()=>decodeSnapshot(encodeSnapshot(f.p)),/工单/);
 });
+
+test('sampling exact threshold boundaries agree at completion and snapshot validation',async()=>{
+ const {applySampling,validateSampling}=await import('../src/production-sampling.js');
+ for(const [total,passed,threshold,expected] of [[50,29,58,'passed'],[50,29,59,'failed'],[3,2,66.67,'failed'],[50,30,58,'passed']]){
+  const b={revision:1,quality:{status:'passed',revision:1},records:Array.from({length:total},(_,i)=>({id:String(i),status:'approved'}))};const t={reviewerId:'wangyue',status:'review',samplingPolicy:{rate:100,minimum:1,threshold},samplingRounds:[]};
+  assert.equal(applySampling(t,b,{type:'startSampling'},'wangyue',at).ok,true);const r=t.samplingRounds[0];for(const [i,recordId] of r.sampleIds.entries())assert.equal(applySampling(t,b,{type:'recordSampling',recordId,verdict:i<passed?'pass':'fail',note:'边界用例'},'wangyue',at).ok,true);
+  assert.equal(applySampling(t,b,{type:'finishSampling'},'wangyue',at).ok,true);assert.equal(r.status,expected);validateSampling(t,b);
+  const bad=structuredClone(t);bad.samplingRounds[0].status=expected==='passed'?'failed':'passed';assert.throws(()=>validateSampling(bad,b),/抽检/);
+ }
+});
+
 
 test('a rejected managed correction starts a new work order using the rejected frozen version',()=>{
  const f=fixture();assign(f);work(f,'claim',{},'liyi');submitRows(f);work(f,'submit',{},'liyi');approveRows(f);work(f,'accept',{},'wangyue');const original=data(f,'publish',{note:'原版'}).version;
