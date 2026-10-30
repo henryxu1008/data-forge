@@ -1,3 +1,4 @@
+import {approvalActor,approvalIndex,approvalLabels} from './production-approvals.js';
 import {operationScope} from './governance-sources.js';
 import {createDeliveryState,deliveryTodos} from './delivery-lifecycle-state.js';
 import {flowActionProjects,visibleProductionFlow} from './p1-production-flow.js';
@@ -50,7 +51,7 @@ export function visibleWorkspace(w,settings,actorId,spaceId){
 }
 export function unifiedTodos(w){
  const tasks=deliveryTodos(w.delivery||createDeliveryState()).map(o=>({id:'delivery:'+o.id,orderId:o.id,name:o.id,detail:`交付${({draft:'待准备',submitted:'待验收',rejected:'待补交',accepted:'反馈待处理'})[o.status]} · ${o.feedbackOpen} 条反馈`,target:'deliveries'}));
- for(const t of w.workOrders?.orders||[])if(t.status!=='accepted')tasks.push({id:'work:'+t.id,taskId:t.id,name:t.name,detail:'生产工单 · '+({assigned:'待领取',claimed:'生产中',review:'待验收',rework:'待返工',disputed:'待仲裁'})[t.status],target:'work-orders',datasetId:t.datasetId});
+ for(const t of w.workOrders?.orders||[])if(t.status!=='accepted')tasks.push({id:'work:'+t.id,taskId:t.id,name:t.name,assigneeId:t.status==='review'?approvalActor(t):t.assigneeId,detail:'生产工单 · '+(t.status==='review'&&t.approvalChain?approvalLabels[approvalIndex(t)]+'待处理':({assigned:'待领取',claimed:'生产中',review:'待验收',rework:'待返工',disputed:'待仲裁'})[t.status]),target:'work-orders',datasetId:t.datasetId});
  for(const j of w.aiAnnotation?.jobs||[])if(['queued','failed','cancelled'].includes(j.status))tasks.push({id:j.id,name:j.name,detail:`AI 预标注${({queued:'待启动',failed:'失败待处理',cancelled:'已取消'})[j.status]}`,target:'ai-annotation',datasetId:j.datasetId,jobId:j.id});
  if(w.datasets.some(d=>d.id==='customer'))for(const status of ['review','rework']){const count=w.reviewState.tasks.filter(r=>r.status===status).length;if(count)tasks.push({id:`customer:${status}`,name:'客户反馈预置样例',detail:`${count} 条${status==='review'?'待审核':'需返工'}（实际样例）`,target:'review',datasetId:'customer'})}
  for(const b of [...Object.values(w.textBatches),...Object.values(w.imageBatches)]){
