@@ -32,13 +32,13 @@ Desktop.ini
 *.swp
 *.swo
 
-# Exact JSON examples are restored from checked-in lossless archives
+# Synthetic test examples are generated from app seeds
 /examples/completed-session.json
 /examples/p1-completed-session.json
 /examples/ai-completed-session.json
 /examples/governance-completed-session.json
 
-# Source-only public repository: retain these inputs only on the local machine
+# Generated fixtures and local historical evidence stay out of git
 /examples/
 /history/
 /verification/

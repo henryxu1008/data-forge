@@ -40,7 +40,8 @@
     "test:changes-browser": "node scripts/test-changes-browser.mjs",
     "pretest:changes-browser": "npm run test:fixtures",
     "test:model-knowledge-browser": "node scripts/test-model-knowledge-browser.mjs",
-    "pretest:model-knowledge-browser": "npm run test:fixtures"
+    "pretest:model-knowledge-browser": "npm run test:fixtures",
+    "pretest:governance-static": "npm run test:fixtures && node scripts/make-governance-example.mjs"
   },
   "dependencies": {
     "@fontsource/noto-sans-sc": "^5.3.1",

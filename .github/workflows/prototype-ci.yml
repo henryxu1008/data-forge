@@ -1,0 +1,126 @@
+name: Prototype CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prototype-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Build, state and static checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Generate fixtures, build and test state transitions
+        shell: bash
+        run: |
+          mkdir -p output/ci-core
+          set -o pipefail
+          npm run test:all 2>&1 | tee output/ci-core/test-all.log
+      - name: Check P1 static pages
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:static 2>&1 | tee output/ci-core/static.log
+      - name: Check AI static pages
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:ai-static 2>&1 | tee output/ci-core/ai-static.log
+      - name: Check governance static pages
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:governance-static 2>&1 | tee output/ci-core/governance-static.log
+      - name: Keep core verification logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: core-verification
+          path: output/ci-core/
+          if-no-files-found: warn
+          retention-days: 7
+
+  browser:
+    name: Browser / ${{ matrix.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        suite:
+          - test:delivery-browser
+          - test:work-orders-browser
+          - test:sampling-browser
+          - test:approvals-browser
+          - test:deadlines-browser
+          - test:correction-retry-browser
+          - test:changes-browser
+          - test:model-knowledge-browser
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Install matching Chromium and system dependencies
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Run browser acceptance with generated fixtures
+        shell: bash
+        env:
+          SUITE: ${{ matrix.suite }}
+          DELIVERY_BROWSER_OUTPUT: output/delivery-browser
+        run: |
+          mkdir -p output/ci-browser
+          set -o pipefail
+          npm run "$SUITE" 2>&1 | tee output/ci-browser/run.log
+      - name: Keep browser logs and synthetic acceptance evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: browser-${{ strategy.job-index }}
+          path: output/
+          if-no-files-found: warn
+          retention-days: 7
+
+  acceptance:
+    name: Acceptance gate
+    if: ${{ always() }}
+    needs: [core, browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require both verification groups to pass
+        shell: bash
+        env:
+          CORE_RESULT: ${{ needs.core.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          {
+            echo '## Prototype acceptance'
+            echo "Build, state and static checks: $CORE_RESULT"
+            echo "All eight browser scenarios: $BROWSER_RESULT"
+            echo 'Frontend simulation only; no deployment or external backend.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [[ "$CORE_RESULT" == success && "$BROWSER_RESULT" == success ]]
