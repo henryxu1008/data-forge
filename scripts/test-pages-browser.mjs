@@ -35,6 +35,9 @@ try{
  await page.evaluate(()=>document.fonts.ready);
  await nav('基本设置');await page.getByRole('img',{name:'平台图标预览'}).waitFor();
  assert.equal(new URL(await page.getByRole('img',{name:'平台图标预览'}).getAttribute('src'),url).pathname,base+'assets/brand-mark.png');
+ await page.getByLabel('平台说明',{exact:true}).fill('Pages 子路径设置保存验证');await click('保存设置');await saved();
+ await nav('运营与恢复');const canonicalDownload=page.waitForEvent('download');await click('导出完整会话快照');await (await canonicalDownload).saveAs(`${out}/canonical-session.json`);
+ assert.equal(decodeSnapshot(await fs.readFile(`${out}/canonical-session.json`,'utf8')).platform.settings.platform.logo,DEFAULT_BRAND_LOGO,'editing another setting must preserve the portable default logo marker');await nav('基本设置');
  await page.getByLabel('上传平台图标').setInputFiles(path.resolve('public/assets/brand-mark.png'));
  await page.waitForFunction(()=>document.querySelector('.sb-logo-preview img')?.getAttribute('src')?.startsWith('data:image/png'));
  await click('保存设置');await page.waitForFunction(()=>document.querySelector('.brand img')?.getAttribute('src')?.startsWith('data:image/png'));await saved();
@@ -44,7 +47,7 @@ try{
  const exported=decodeSnapshot(await fs.readFile(`${out}/accepted-session.json`,'utf8'));assert.equal(exported.platform.settings.platform.logo,DEFAULT_BRAND_LOGO,'default marker must stay compatible with old snapshots');
  const chooser=page.waitForEvent('filechooser');await click('选择完整快照恢复');await (await chooser).setFiles(`${out}/accepted-session.json`);await click('恢复此快照');await saved();
  await page.reload({waitUntil:'domcontentloaded'});await saved();await checkDefaultLogo();
- await page.goto(url+'#settings/general',{waitUntil:'domcontentloaded'});await saved();await page.getByRole('img',{name:'平台图标预览'}).waitFor();await checkDefaultLogo();
+ await page.goto(url+'#settings/general',{waitUntil:'domcontentloaded'});await page.reload({waitUntil:'domcontentloaded'});await saved();await page.getByRole('img',{name:'平台图标预览'}).waitFor();await checkDefaultLogo();
  await page.screenshot({path:`${out}/desktop.png`,fullPage:true});await page.setViewportSize({width:390,height:844});
  await page.waitForFunction(()=>document.querySelector('.sidebar')?.getBoundingClientRect().right<=1);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'mobile layout must fit');
