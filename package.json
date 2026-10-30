@@ -38,7 +38,9 @@
     "test:correction-retry-browser": "node scripts/test-delivery-browser.mjs --work-orders --retry-correction",
     "pretest:correction-retry-browser": "npm run test:fixtures",
     "test:changes-browser": "node scripts/test-changes-browser.mjs",
-    "pretest:changes-browser": "npm run test:fixtures"
+    "pretest:changes-browser": "npm run test:fixtures",
+    "test:model-knowledge-browser": "node scripts/test-model-knowledge-browser.mjs",
+    "pretest:model-knowledge-browser": "npm run test:fixtures"
   },
   "dependencies": {
     "@fontsource/noto-sans-sc": "^5.3.1",
