@@ -104,23 +104,76 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  pages:
+    name: GitHub Pages build and subpath smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:pages
+      - name: Install matching Chromium and system dependencies
+        run: npx --no-install playwright install --with-deps chromium
+      - run: npm run test:pages-browser
+      - name: Upload static site for main deployment
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/client
+      - name: Keep Pages verification evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: pages-verification
+          path: output/pages-browser/
+          if-no-files-found: warn
+          retention-days: 7
+
   acceptance:
     name: Acceptance gate
     if: ${{ always() }}
-    needs: [core, browser]
+    needs: [core, browser, pages]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Require both verification groups to pass
+      - name: Require all verification groups to pass
         shell: bash
         env:
           CORE_RESULT: ${{ needs.core.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
+          PAGES_RESULT: ${{ needs.pages.result }}
         run: |
           {
             echo '## Prototype acceptance'
             echo "Build, state and static checks: $CORE_RESULT"
             echo "All eight browser scenarios: $BROWSER_RESULT"
-            echo 'Frontend simulation only; no deployment or external backend.'
+            echo "GitHub Pages build and subpath smoke: $PAGES_RESULT"
+            echo 'Frontend simulation only; no external backend.'
           } >> "$GITHUB_STEP_SUMMARY"
-          [[ "$CORE_RESULT" == success && "$BROWSER_RESULT" == success ]]
+          [[ "$CORE_RESULT" == success && "$BROWSER_RESULT" == success && "$PAGES_RESULT" == success ]]
+
+  deploy:
+    name: Publish GitHub Pages
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Deploy verified static artifact
+        id: deployment
+        uses: actions/deploy-pages@v4
