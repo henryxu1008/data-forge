@@ -215,7 +215,7 @@ export function applyImageBatchAction(batch,action={}) {
       id:`${batch.datasetId}-image-version-${index}`,version:`v0.${index}`,type:'image',
       datasetId:batch.datasetId,datasetName:batch.name,projectId:batch.projectId,projectName:batch.projectName,
       batchId:batch.batchId,taskSpecVersionId:batch.taskSpecVersionId,specSnapshot:clone(batch.specSnapshot),
-      sourceRevision:batch.revision,records:clone(batch.records.filter(record=>record.status==='approved')),
+      qualitySnapshot:clone(check),sourceRevision:batch.revision,records:clone(batch.records.filter(record=>record.status==='approved')),
       count:check.count,boxCount:check.boxCount,normalCount:check.normalCount,date:at,owner:text(action.owner)||'演示管理员',note,
     };
     return ok({...batch,versions:[version,...batch.versions],updatedAt:at},{version});

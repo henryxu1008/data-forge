@@ -13,8 +13,8 @@ await build({entryPoints:['src/GovernanceViews.jsx'],bundle:true,platform:'node'
 const imported=await import(pathToFileURL(path.join(folder,'views.cjs')).href),views=imported.default||imported,{default:GovernanceView,GovernanceEntry,EvaluationIntegrityPanel,AcceptanceSnapshot}=views;
 const p=JSON.parse(await fs.readFile('examples/governance-completed-session.json','utf8')).payload,w=p.workspaces.demo,noop=()=>{};
 const props={w,platform:p,onGovernanceAction:()=>({ok:false,error:'static only'}),onNavigate:noop};
-const model=w.modelState.models.find(m=>m.id==='MODEL-0010'),version=w.textBatches['gov-heldout-example'].versions[0],report=w.modelState.evaluations.find(e=>e.dataVersionId===version.id&&e.acceptanceSnapshot),copied={...structuredClone(version),id:'copy-static',records:model.dataVersion.records.map((r,i)=>({...r,id:'copy-'+i}))};
-assert.equal(checkSampleOverlap(model.dataVersion,copied).overlapCount,3);
+const model=w.modelState.models.find(m=>m.type!=='image'&&m.dataVersionId!=='customer:v0.2'),version=w.textBatches['gov-heldout-example'].versions[0],report=w.modelState.evaluations.find(e=>e.dataVersionId===version.id&&e.acceptanceSnapshot),copied={...structuredClone(version),id:'copy-static',records:model.dataVersion.records.map((r,i)=>({...r,id:'copy-'+i}))};
+assert.equal(checkSampleOverlap(model.dataVersion,copied).overlapCount,model.dataVersion.records.length);
 const pending=enableGovernance(JSON.parse(await fs.readFile('examples/ai-completed-session.json','utf8')).payload).workspaces.demo;
 const cases=[
  ['charter-and-swimlane',GovernanceView,{...props,request:{target:'governance',projectId:'PRJ-001',tab:'charter'}},['角色责任泳道','负责人','批准人','质量负责人','退出条件','PLAN-1']],
