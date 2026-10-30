@@ -102,3 +102,60 @@ test('quality acceptance freezes reviewed evidence and remains explicitly simula
 test('legacy restoration enables pending governance without inventing approvals, while successful execution evidence is immutable',()=>{
  const f=fixture();delete f.p.workspaces.demo.governance;const enabled=enableGovernance(f.p);assert.equal(enabled.workspaces.demo.governance.admissions.length,0);assert.deepEqual(enabled.workspaces.demo.modelState,f.p.workspaces.demo.modelState);f.w=enabled.workspaces.demo;f.p=enabled;charter(f);const lic=admit(f);yes(f,'assignDataPurpose',{versionId:'customer:v0.2',purpose:'training'});const a={type:'startTraining',dataVersionId:'customer:v0.2'},access=checkGovernanceAction(f.w,'model',a,{at});f.w=recordGovernanceUse(f.w,'model',a,access,{id:'EXAMPLE'},at);const snapshot=JSON.stringify(f.w.governance.executions[0]);yes(f,'revokeAdmission',{admissionId:lic.id,note:'稍后撤回'});assert.equal(JSON.stringify(f.w.governance.executions[0]),snapshot);validateGovernance(f.w);
 });
+
+test('change events are idempotent, freeze impacts and gate publication until designated review with evidence',()=>{
+ const f=fixture();charter(f);admit(f);const frozen=JSON.stringify(f.w.modelState),a={sourceId:'data:customer',kind:'spec',eventKey:'spec-v2',revision:'v2',note:'分类说明修订'};
+ const e=yes(f,'recordChange',a);yes(f,'recordChange',a);assert.equal(f.w.governance.changes.length,1);assert.equal(action(f,'recordChange',{...a,revision:'v3'}).ok,false);
+ assert.ok(e.impactSnapshot.some(x=>x.type==='evaluation'));assert.ok(e.impactSnapshot.some(x=>x.type==='service'));
+ assert.match(checkGovernanceAction(f.w,'completion',{type:'listAsset',assetId:'data:customer:v0.2'},{at}).error,/变更重验/);
+ assert.equal(action(f,'reviewChange',{changeId:e.id,result:'passed',note:'管理员越权',evidence:'检查记录'}).ok,false);
+ yes(f,'reviewChange',{changeId:e.id,result:'failed',note:'发现旧标签'}, {...ctx,actorId:'liyi'});
+ assert.equal(action(f,'reviewChange',{changeId:e.id,result:'passed',note:'跳过重试',evidence:'证据'},{...ctx,actorId:'liyi'}).ok,false);
+ yes(f,'retryChange',{changeId:e.id,note:'已完成重新核对'},{...ctx,actorId:'liyi'});
+ assert.equal(action(f,'reviewChange',{changeId:e.id,result:'passed',note:'缺证据'},{...ctx,actorId:'liyi'}).ok,false);
+ yes(f,'reviewChange',{changeId:e.id,result:'passed',note:'全部影响对象保持兼容',evidence:'review-v2:各模型/服务/交付逐项核对记录'},{...ctx,actorId:'liyi'});
+ assert.equal(checkGovernanceAction(f.w,'completion',{type:'listAsset',assetId:'data:customer:v0.2'},{at}).ok,true);
+ assert.equal(JSON.stringify(f.w.modelState),frozen);validateGovernance(f.w);decodeSnapshot(encodeSnapshot(f.p));
+ const bad=structuredClone(f.w);bad.governance.changes[0].impactSnapshot=[];assert.throws(()=>validateGovernance(bad),/冻结/);
+});
+
+test('newer changes, withdrawn licenses, hidden projects and forged completion cannot bypass revalidation',()=>{
+ const f=fixture();charter(f);const license=admit(f);
+ const a={sourceId:'data:customer',kind:'data',revision:'v2',note:'来源更新'};
+ const first=yes(f,'recordChange',{...a,eventKey:'one'}),second=yes(f,'recordChange',{...a,eventKey:'two',revision:'v3'});
+ const review={changeId:first.id,result:'passed',note:'检查完成',evidence:'记录'};
+ assert.match(action(f,'reviewChange',review,{...ctx,actorId:'liyi'}).error,/较新/);
+ yes(f,'revokeAdmission',{admissionId:license.id,note:'许可撤回'});const rev=f.w.governance.changes[0];assert.equal(rev.kind,'license');
+ assert.match(action(f,'reviewChange',{...review,changeId:rev.id},{...ctx,actorId:'liyi'}).error,/准入/);
+ const bad=structuredClone(f.w);bad.governance.changes[0].status='passed';assert.throws(()=>validateGovernance(bad),/审计/);
+ const visible=visibleWorkspace(f.w,f.p.settings,'liyi','demo');assert.ok((visible.governance.changes||[]).every(e=>e.impactSnapshot.every(x=>visible.production.projects.some(p=>p.id===x.projectId))));
+ assert.ok(second.id!==first.id);
+});
+
+test('automatic source and taxonomy changes capture once without rewriting frozen versions',async()=>{
+ const {captureChanges}=await import('../src/asset-changes.js');const f=fixture(),before=structuredClone(f.w),after=structuredClone(before);
+ after.production.taxonomies[0].tags[0].description+=' 新规则';const frozen=JSON.stringify(after.versions);
+ let next=captureChanges(before,after,'henry',at);assert.ok(next.governance.changes.some(e=>e.kind==='spec'&&e.sourceId==='data:customer'));
+ const count=next.governance.changes.length;next=captureChanges(next,next,'henry',at);assert.equal(next.governance.changes.length,count);assert.equal(JSON.stringify(next.versions),frozen);validateGovernance(next);
+ const changed=structuredClone(next),doc=changed.completion.documents[0];doc.content+=' 更新';doc.revision++;
+ next=captureChanges(next,changed,'henry',at);assert.ok(next.governance.changes.some(e=>e.kind==='data'&&e.sourceId==='doc:'+doc.id));validateGovernance(next);
+});
+
+test('re-admission resolves withdrawal only after evidence review; stale baselines remain blocked',()=>{
+ const f=fixture();charter(f);const lic=admit(f);yes(f,'revokeAdmission',{admissionId:lic.id,note:'撤回'});const e=f.w.governance.changes[0];
+ admit(f);yes(f,'reviewChange',{changeId:e.id,result:'passed',note:'新许可覆盖原影响清单',evidence:'renewed-license-review'},{...ctx,actorId:'liyi'});
+ assert.equal(checkGovernanceAction(f.w,'completion',{type:'listAsset',assetId:'data:customer:v0.2'},{at}).ok,true);validateGovernance(f.w);
+ f.w.production.taxonomies[0].tags[0].description+='another change';
+ assert.match(checkGovernanceAction(f.w,'completion',{type:'listAsset',assetId:'data:customer:v0.2'},{at}).error,/变更重验/);
+});
+
+test('invalidation covers derived publication, model deployment, service calls and knowledge consumers',async()=>{
+ const {changeBlock}=await import('../src/asset-changes.js');const f=fixture();
+ for(const source of sourceCatalog(f.w))yes(f,'recordChange',{sourceId:source.id,kind:'data',eventKey:source.id,revision:'external-v2',note:'来源变更'});
+ for(const service of f.w.modelState.services){assert.ok(changeBlock(f.w,'model',{type:'invokeService',serviceId:service.id}));assert.ok(changeBlock(f.w,'model',{type:'retryDeployment',serviceId:service.id}));assert.equal(changeBlock(f.w,'model',{type:'offlineService',serviceId:service.id}),null);}
+ for(const model of f.w.modelState.models)assert.ok(changeBlock(f.w,'model',{type:'publishService',modelVersionId:model.id}));
+ for(const b of Object.values(f.w.textBatches))assert.ok(changeBlock(f.w,'data',{type:'publish',datasetId:b.datasetId}));
+ for(const i of f.w.completion.indexes)assert.ok(changeBlock(f.w,'completion',{type:'retrieve',indexId:i.id}));
+ for(const g of f.w.completion.agents.filter(g=>g.nodes.some(n=>['retrieval','model'].includes(n.type))))assert.ok(changeBlock(f.w,'completion',{type:'runAgent',agentId:g.id}));
+ assert.equal(changeBlock(f.w,'model',{type:'startEvaluation'}),null,'repair/evaluation operations remain available');
+});

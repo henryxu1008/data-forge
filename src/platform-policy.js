@@ -11,7 +11,7 @@ export function permissionFor(kind,type){
   if(kind==='data')return type==='publish'?'publish':['approve','reject','checkQuality','reopen','selectQualityRules'].includes(type)?(type==='reject'?'reject':'approve'):'edit';
   if(kind==='flow')return type==='publishJob'?'publish':['reviewJob','assessJob','assessVersion','selectJobRules'].includes(type)?'approve':'edit';
  if(kind==='annotation')return ['createPredictionJob','startPredictionJob','retryPredictionJob','cancelPredictionJob','advancePredictionJobs'].includes(type)?'run':'edit';
- if(kind==='governance')return ['decideCharter','closeCharter','decideAdmission','revokeAdmission','reviewEvidence','recordAcceptance'].includes(type)?'approve':'edit';
+ if(kind==='governance')return ['reviewChange','retryChange','decideCharter','closeCharter','decideAdmission','revokeAdmission','reviewEvidence','recordAcceptance'].includes(type)?'approve':'edit';
  return ['publishKnowledge','listAsset','delistAsset','grantAsset','revokeGrant'].includes(type)?'publish':['approveQA','rejectQA','reopenQA'].includes(type)?(type==='rejectQA'?'reject':'approve'):['runAgent','retrieve','accessAsset','verifyFeedback'].includes(type)?'run':['ackAlert','closeAlert','setClock'].includes(type)?'members':'edit';
 }
 export function canAccess(settings,actorId,spaceId,permission='view',projectId){
@@ -52,6 +52,7 @@ export function visibleWorkspace(w,settings,actorId,spaceId){
 }
 export function unifiedTodos(w,now=Date.now()){
  const tasks=deliveryTodos(w.delivery||createDeliveryState()).map(o=>({id:'delivery:'+o.id,orderId:o.id,name:o.id,detail:`交付${({draft:'待准备',submitted:'待验收',rejected:'待补交',accepted:'反馈待处理'})[o.status]} · ${o.feedbackOpen} 条反馈`,target:'deliveries'}));
+ for(const e of w.governance?.changes||[])if(e.status!=='passed')tasks.push({id:'change:'+e.id,name:e.id+' · '+e.revision,detail:e.status==='failed'?'变更重验失败，待重试':'资产变更待重验',target:'governance',tab:'changes',sourceId:e.sourceId,projectId:e.projectId,changeId:e.id});
  for(const t of w.workOrders?.orders||[])if(t.status!=='accepted')tasks.push({id:'work:'+t.id,taskId:t.id,name:t.name,assigneeId:workOwner(t),deadlineState:workTiming(t,now).state,dueAt:t.dueAt,detail:'生产工单 · '+(t.status==='review'&&t.approvalChain?approvalLabels[approvalIndex(t)]+'待处理':({assigned:'待领取',claimed:'生产中',review:'待验收',rework:'待返工',disputed:'待仲裁'})[t.status])+' · '+workTiming(t,now).label,target:'work-orders',datasetId:t.datasetId});
  for(const j of w.aiAnnotation?.jobs||[])if(['queued','failed','cancelled'].includes(j.status))tasks.push({id:j.id,name:j.name,detail:`AI 预标注${({queued:'待启动',failed:'失败待处理',cancelled:'已取消'})[j.status]}`,target:'ai-annotation',datasetId:j.datasetId,jobId:j.id});
  if(w.datasets.some(d=>d.id==='customer'))for(const status of ['review','rework']){const count=w.reviewState.tasks.filter(r=>r.status===status).length;if(count)tasks.push({id:`customer:${status}`,name:'客户反馈预置样例',detail:`${count} 条${status==='review'?'待审核':'需返工'}（实际样例）`,target:'review',datasetId:'customer'})}
