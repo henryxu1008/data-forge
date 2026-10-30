@@ -35,7 +35,7 @@ try{
  await page.evaluate(()=>document.fonts.ready);
  await nav('基本设置');await page.getByRole('img',{name:'平台图标预览'}).waitFor();
  assert.equal(new URL(await page.getByRole('img',{name:'平台图标预览'}).getAttribute('src'),url).pathname,base+'assets/brand-mark.png');
- await page.getByLabel('平台说明',{exact:true}).fill('Pages 子路径设置保存验证');await click('保存设置');await saved();
+ await page.getByLabel('平台说明').fill('Pages 子路径设置保存验证');await click('保存设置');await saved();
  await nav('运营与恢复');const canonicalDownload=page.waitForEvent('download');await click('导出完整会话快照');await (await canonicalDownload).saveAs(`${out}/canonical-session.json`);
  assert.equal(decodeSnapshot(await fs.readFile(`${out}/canonical-session.json`,'utf8')).platform.settings.platform.logo,DEFAULT_BRAND_LOGO,'editing another setting must preserve the portable default logo marker');await nav('基本设置');
  await page.getByLabel('上传平台图标').setInputFiles(path.resolve('public/assets/brand-mark.png'));
