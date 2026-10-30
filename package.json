@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
+    "build:pages": "vite build --base=/data-forge/",
+    "test:pages-browser": "node scripts/test-pages-browser.mjs",
     "preview": "vite preview",
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:flows": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs",

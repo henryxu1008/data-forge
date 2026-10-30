@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {IconBuilding, IconUsers, IconUser, IconUserPlus, IconCrown, IconShieldCheck, IconEye, IconCube, IconChevronRight, IconChevronDown, IconPlus, IconLock, IconHistory, IconCheck, IconUpload, IconDots, IconAlertCircle, IconSettings, IconMail, IconClock, IconInfoCircle} from '@tabler/icons-react';
 import {Button, Badge, Field, Modal, Search, Empty, Tabs} from '../ui.jsx';
 import {useSettings} from './context.jsx';
+import {DEFAULT_BRAND_LOGO,brandLogoUrl} from '../product-brand.js';
 import './basic.css';
 
 const permissions = [
@@ -16,7 +17,7 @@ const stamp = () => new Intl.DateTimeFormat('sv-SE', {timeZone:'Asia/Singapore',
 const makeRole = (id,name,description,granted,extra={}) => ({id,name,description,builtIn:false,scope:'space',permissions:granted,projectScope:'authorized',sampleScope:'assigned',preventSelfReview:true,requireRejectReason:true,...extra});
 
 export const initialBasicState = {
-  platform:{name:'创平数智工场',organization:'示例企业',description:'企业数据准备、模型开发与智能应用平台。',language:'zh-CN',timezone:'Asia/Singapore',logo:'/assets/brand-mark.png'},
+  platform:{name:'创平数智工场',organization:'示例企业',description:'企业数据准备、模型开发与智能应用平台。',language:'zh-CN',timezone:'Asia/Singapore',logo:DEFAULT_BRAND_LOGO},
   organizations:[
     {id:'org-root',name:'示例企业',parentId:null},
     {id:'org-data',name:'数据运营部',parentId:'org-root'},
@@ -99,9 +100,9 @@ function GeneralPage() {
   const save=()=>{
     if(!form.name.trim())return;
     const next={...form,name:form.name.trim(),organization:form.organization.trim()||'示例企业'};
-    const before={平台名称:state.platform.name,组织名称:state.platform.organization,平台说明:state.platform.description||'未填写',平台图标:state.platform.logo==='/assets/brand-mark.png'?'默认图标':'自定义图标',默认语言:state.platform.language,时区:state.platform.timezone};
+    const before={平台名称:state.platform.name,组织名称:state.platform.organization,平台说明:state.platform.description||'未填写',平台图标:state.platform.logo===DEFAULT_BRAND_LOGO?'默认图标':'自定义图标',默认语言:state.platform.language,时区:state.platform.timezone};
     setState(prev=>({...prev,platform:next,organizations:prev.organizations.map(o=>o.id==='org-root'?{...o,name:next.organization}:o)}));
-    logEvent({action:'修改平台设置',object:next.name,space:'平台范围',before,after:{平台名称:next.name,组织名称:next.organization,平台说明:next.description||'未填写',平台图标:next.logo==='/assets/brand-mark.png'?'默认图标':next.logo!==state.platform.logo?'自定义图标（已更新）':'自定义图标',默认语言:next.language,时区:next.timezone},details:'平台设置已在本次演示中保存。'});
+    logEvent({action:'修改平台设置',object:next.name,space:'平台范围',before,after:{平台名称:next.name,组织名称:next.organization,平台说明:next.description||'未填写',平台图标:next.logo===DEFAULT_BRAND_LOGO?'默认图标':next.logo!==state.platform.logo?'自定义图标（已更新）':'自定义图标',默认语言:next.language,时区:next.timezone},details:'平台设置已在本次演示中保存。'});
     notify('平台设置已保存，顶栏品牌已同步');
   };
   const chooseLogo=e=>{
@@ -114,7 +115,7 @@ function GeneralPage() {
     <Title title="基本设置" description="设置平台信息与默认使用偏好。" inlineActions actions={<Badge tone="amber" dot={false}><IconLock size={13}/>仅管理员可修改</Badge>}/>
     <div className="sb-form-body">
       <Section title="平台信息">
-        <div className="sb-logo-setting"><span className="sb-label">平台图标</span><div className="sb-logo-preview"><img src={form.logo} alt="平台图标预览"/></div><div><Button variant="outline" onClick={()=>fileRef.current?.click()}>更换图标</Button><p>建议使用正方形 PNG 图片，不超过 2 MB。</p>{form.logo!=='/assets/brand-mark.png'&&<button className="text-button sb-small-link" onClick={()=>change('logo','/assets/brand-mark.png')}>恢复默认图标</button>}</div><input ref={fileRef} className="sb-file-input" type="file" accept="image/png" aria-label="上传平台图标" onChange={chooseLogo}/></div>
+        <div className="sb-logo-setting"><span className="sb-label">平台图标</span><div className="sb-logo-preview"><img src={brandLogoUrl(form.logo)} alt="平台图标预览"/></div><div><Button variant="outline" onClick={()=>fileRef.current?.click()}>更换图标</Button><p>建议使用正方形 PNG 图片，不超过 2 MB。</p>{form.logo!==DEFAULT_BRAND_LOGO&&<button className="text-button sb-small-link" onClick={()=>change('logo',DEFAULT_BRAND_LOGO)}>恢复默认图标</button>}</div><input ref={fileRef} className="sb-file-input" type="file" accept="image/png" aria-label="上传平台图标" onChange={chooseLogo}/></div>
         <div className="sb-form-grid"><Field label="平台名称" required><input value={form.name} maxLength={20} onChange={e=>change('name',e.target.value)}/></Field><Field label="组织名称"><input value={form.organization} maxLength={30} onChange={e=>change('organization',e.target.value)}/></Field></div>
         <Field label="平台说明"><textarea rows={3} value={form.description} maxLength={300} onChange={e=>change('description',e.target.value)}/></Field>
       </Section>

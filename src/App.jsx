@@ -26,7 +26,7 @@ import {KnowledgeView,AgentsView,FeedbackView,MarketplaceView,OperationsView,Wor
 import {createProductionFlowState,applyProductionFlowAction} from './p1-production-flow.js';
 import {bindTaskPlan} from './p1-quality.js';
 import {TaskPlanningView,ProductionFlowView,BatchRulePanel,TaskPlanStamp} from './P1FlowViews.jsx';
-import {PRODUCT_NAME} from './product-brand.js';
+import {PRODUCT_NAME,brandLogoUrl} from './product-brand.js';
 import {createAIAnnotationState,applyAIAnnotationAction} from './ai-annotation-state.js';
 import AIAnnotationView from './AIAnnotationView.jsx';
 import GovernanceView,{GovernanceEntry} from './GovernanceViews.jsx';
@@ -77,8 +77,7 @@ export function App(){
  const notify=useCallback((text,tone='success')=>{setToast({text,tone});clearTimeout(timer.current);timer.current=setTimeout(()=>setToast(null),5000)},[]);
  const p=platform,spaceId=p.activeSpaceId,raw=p.workspaces[spaceId],w=visibleWorkspace(raw,p.settings,p.actorId,spaceId),settingsActive=view.startsWith('settings-');
  const space=p.settings.spaces.find(s=>s.id===spaceId),actor=p.settings.users.find(u=>u.id===p.actorId);
- const defaultBrandLogo=initialBasicState.platform.logo;
- const brand={...p.settings.platform,name:PRODUCT_NAME,logo:/^\/assets\/brand-mark\.png$/.test(p.settings.platform.logo||'')?defaultBrandLogo:p.settings.platform.logo};
+ const brand={...p.settings.platform,name:PRODUCT_NAME,logo:brandLogoUrl(p.settings.platform.logo)};
  const allVersions=workspaceVersions(w),selectedId=w.datasets.some(d=>d.id===raw.selectedId)?raw.selectedId:w.datasets[0]?.id||'',modelRequest=request?.target===view?request:null;
  const group=settingsActive?{id:'settings',label:'系统设置'}:groups.find(g=>(view==='pipeline'&&g.id==='datasets')||(view==='task-plan'&&g.id==='projects')||g.id===view||g.children?.some(c=>c[0]===view)||(g.id==='datasets'&&view==='quality'))||{id:'operations',label:'运营与恢复'};
  const record=(event,base=ref.current)=>({id:`BUSINESS-${Date.now()}-${++sequence.current}`,at:new Date().toISOString(),actor:base.settings.users.find(u=>u.id===base.actorId)?.name||base.actorId,spaceId:base.activeSpaceId,space:base.settings.spaces.find(s=>s.id===base.activeSpaceId)?.name,result:'成功',before:{},after:{},...event});
