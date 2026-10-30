@@ -165,9 +165,9 @@ export function applyTextBatchAction(batch,action={}) {
   if(action.type==='assign'){
     const assignee=text(action.assignee);
     if(!assignee)return fail(batch,'请选择本批次的演示标注人。');
-    const ids=action.sampleIds===undefined?batch.records.filter(record=>record.status==='todo').map(record=>record.id):action.sampleIds;
+    const ids=action.sampleIds===undefined?batch.records.filter(record=>['todo','rework'].includes(record.status)).map(record=>record.id):action.sampleIds;
     if(!Array.isArray(ids)||!ids.length)return fail(batch,'没有可分配的待标注样本。');
-    if(new Set(ids).size!==ids.length||ids.some(id=>!batch.records.some(record=>record.id===id&&record.status==='todo')))return fail(batch,'分配范围必须是本批次的待标注样本。');
+    if(new Set(ids).size!==ids.length||ids.some(id=>!batch.records.some(record=>record.id===id&&['todo','rework'].includes(record.status))))return fail(batch,'分配范围必须是本批次的待标注样本。');
     const selected=new Set(ids);
     const changed=batch.records.some(record=>selected.has(record.id)&&record.annotator!==assignee);
     if(!changed)return fail(batch,'所选样本已经分配给该标注人。');

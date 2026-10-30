@@ -10,7 +10,7 @@
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:flows": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs",
     "test:p1": "node --test tests/p1-production-flow.test.mjs tests/p1-integration.test.mjs",
-    "test:all": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs tests/p1-production-flow.test.mjs tests/p1-integration.test.mjs tests/sites-worker.test.mjs tests/ai-annotation-flow.test.mjs tests/governance-flow.test.mjs tests/delivery-lifecycle.test.mjs tests/delivery-platform.test.mjs",
+    "test:all": "node --test tests/review-flow.test.mjs tests/model-call-policy.test.mjs tests/text-production-flow.test.mjs tests/model-lifecycle-flow.test.mjs tests/image-production-flow.test.mjs tests/completion-flow.test.mjs tests/p1-production-flow.test.mjs tests/p1-integration.test.mjs tests/sites-worker.test.mjs tests/ai-annotation-flow.test.mjs tests/governance-flow.test.mjs tests/delivery-lifecycle.test.mjs tests/delivery-platform.test.mjs tests/production-workflow.test.mjs",
     "test:static": "node scripts/check-p1-static.mjs",
     "test:ai": "node --test tests/ai-annotation-flow.test.mjs",
     "test:ai-static": "node scripts/check-ai-static.mjs",
@@ -24,7 +24,11 @@
     "pretest:governance": "npm run test:fixtures",
     "pretest:p1": "npm run test:fixtures",
     "test:delivery-browser": "node scripts/test-delivery-browser.mjs",
-    "pretest:delivery-browser": "npm run test:fixtures"
+    "pretest:delivery-browser": "npm run test:fixtures",
+    "test:work-orders": "node --test tests/production-workflow.test.mjs",
+    "pretest:work-orders": "npm run test:fixtures",
+    "test:work-orders-browser": "node scripts/test-delivery-browser.mjs --work-orders",
+    "pretest:work-orders-browser": "npm run test:fixtures"
   },
   "dependencies": {
     "@fontsource/noto-sans-sc": "^5.3.1",
