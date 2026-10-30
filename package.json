@@ -34,7 +34,9 @@
     "test:approvals-browser": "node scripts/test-sampling-browser.mjs --approvals",
     "pretest:approvals-browser": "npm run test:fixtures",
     "test:deadlines-browser": "node scripts/test-sampling-browser.mjs --deadlines",
-    "pretest:deadlines-browser": "npm run test:fixtures"
+    "pretest:deadlines-browser": "npm run test:fixtures",
+    "test:correction-retry-browser": "node scripts/test-delivery-browser.mjs --work-orders --retry-correction",
+    "pretest:correction-retry-browser": "npm run test:fixtures"
   },
   "dependencies": {
     "@fontsource/noto-sans-sc": "^5.3.1",

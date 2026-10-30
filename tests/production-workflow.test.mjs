@@ -153,6 +153,31 @@ test('review-stage extensions preserve approvals while transfer and completed ex
  work(f,'accept',{note:'复审'},'zhangmin');work(f,'accept',{note:'最终验收'},'henry');assert.equal(applyWorkOrder(workspace(f),f.p.settings,'henry','demo',{type:'extendDeadline',taskId:'WORK-1',dueAt:'2026-11-04T00:00:00Z',note:'改历史'},at).ok,false);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
 });
 
+test('text/image rejected correction can start a new immutable attempt and close only after its redelivery acceptance',()=>{
+ for(const image of [false,true]){
+  const f=multiFixture(image);assignMulti(f,{samplingPolicy:{rate:100,minimum:1,threshold:100}});
+  const complete=taskId=>{work(f,'claim',{taskId},'liyi');submitRows(f);work(f,'submit',{taskId},'liyi');approveRows(f);work(f,'startSampling',{taskId},'wangyue');const t=workspace(f).workOrders.orders.find(t=>t.id===taskId);for(const recordId of t.samplingRounds.at(-1).sampleIds)work(f,'recordSampling',{taskId,recordId,verdict:'pass',note:'逐项复核'},'wangyue');work(f,'finishSampling',{taskId},'wangyue');for(const actor of chain)work(f,'accept',{taskId,note:'本级通过'},actor);return data(f,'publish',{note:'正式冻结'}).version;};
+  const original=complete('WORK-1'),projectId=original.projectId;
+  const deliver=(type,extra={},actor='henry')=>{const r=applyWorkspaceDelivery(workspace(f),f.p.settings,actor,'demo',{type,orderId:'DLV-1',...extra},at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;return r;};
+  const submit=orderId=>{deliver('package',{orderId,checksum:'x',qualityReportId:'q',licenseRef:'l',manifest:['data.json']});deliver('submit',{orderId});};
+  deliver('create',{projectId,versionId:original.id,customerId:'wangyue'});submit('DLV-1');deliver('accept',{note:'验收'},'wangyue');deliver('openFeedback',{note:'售后问题'},'wangyue');
+  const action={orderId:'DLV-1',feedbackId:'DLV-1-FB-1',assigneeId:'liyi',reviewerId:'wangyue',dueAt};
+  const correction=()=>{const r=createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',action,at);assert.equal(r.ok,true,r.error);f.p.workspaces.demo=r.workspace;f.id=r.task.datasetId;return r;};
+  correction();const first=complete('WORK-2');deliver('requestRevision',{newVersionId:first.id,feedbackId:action.feedbackId,note:'首轮纠错'});submit('DLV-2');
+  assert.equal(createDeliveryCorrection(workspace(f),f.p.settings,'henry','demo',action,at).ok,false);deliver('reject',{orderId:'DLV-2',note:'仍有错误'},'wangyue');
+  assert.equal(applyWorkspaceDelivery(workspace(f),f.p.settings,'henry','demo',{type:'requestRevision',orderId:'DLV-2',newVersionId:original.id,note:'旁路'},at).ok,false);
+  assert.equal(applyWorkspaceDelivery(workspace(f),f.p.settings,'henry','demo',{type:'requestRevision',orderId:'DLV-1',feedbackId:action.feedbackId,newVersionId:first.id,note:'重复提交'},at).ok,false);
+  const firstFrozen=structuredClone(workspace(f).delivery.orders.find(o=>o.id==='DLV-2'));
+  const retry=correction();assert.deepEqual(retry.task.approvalChain,chain);assert.deepEqual(retry.task.samplingPolicy,{rate:100,minimum:1,threshold:100});assert.equal(retry.order.feedback[0].revisionId,undefined);assert.equal(retry.order.feedback[0].correctionHistory.length,1);
+  const batch=workspace(f)[image?'imageBatches':'textBatches'][f.id];assert.ok(batch.records.every(r=>r.originSnapshot.versionId===first.id));assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+  assert.equal(applyWorkspaceDelivery(workspace(f),f.p.settings,'henry','demo',{type:'closeFeedback',orderId:'DLV-1',feedbackId:action.feedbackId,note:'提前关闭'},at).ok,false);
+  const second=complete('WORK-3');deliver('requestRevision',{newVersionId:second.id,feedbackId:action.feedbackId,note:'第二轮纠错'});submit('DLV-3');deliver('accept',{orderId:'DLV-3',note:'问题解决'},'wangyue');deliver('closeFeedback',{feedbackId:action.feedbackId,note:'客户确认'});
+  assert.deepEqual(workspace(f).delivery.orders.find(o=>o.id==='DLV-2'),firstFrozen);assert.deepEqual(decodeSnapshot(encodeSnapshot(f.p)).platform,f.p);
+  assert.ok(!unifiedTodos(workspace(f)).some(x=>['work-orders','deliveries'].includes(x.target)));
+  const bad=structuredClone(f.p);bad.workspaces.demo.delivery.orders.find(o=>o.id==='DLV-1').feedback[0].correctionHistory[0].revisionId='DLV-3';assert.throws(()=>decodeSnapshot(encodeSnapshot(bad)),/工单/);
+ }
+});
+
 
 test('already assigned text/image batches can enter work-order management without rewriting assignment history',()=>{
  for(const image of [false,true]){const f=fixture(image),key=image?'imageBatches':'textBatches';const fn=image?applyImageBatchAction:applyTextBatchAction;const r=fn(workspace(f)[key][f.id],{type:'assign',assignee:'李一',at});assert.equal(r.ok,true,r.error);workspace(f)[key][f.id]=r.batch;const before=structuredClone(r.batch);assign(f);const after=workspace(f)[key][f.id];assert.equal(after.revision,before.revision);assert.deepEqual(after.records.map(({reviewerId,...r})=>r),before.records);work(f,'claim',{},'liyi');}

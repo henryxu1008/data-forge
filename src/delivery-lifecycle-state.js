@@ -93,7 +93,7 @@ export function applyDeliveryAction(state,action,context={}) {
   appendHistory(o,a.type,actorId,at,a.note||'');
   events(s,a.type,o,at,actorId);return {ok:true,state:s,order:o};
 }
-export const deliveryTodos=(state)=>state.orders.filter(o=>(['draft','submitted'].includes(o.status)||(o.status==='rejected'&&!o.revisions.some(id=>state.orders.some(r=>r.id===id&&r.status!=='cancelled'))))||o.feedback.some(f=>f.status==='open')).map(o=>({id:o.id,projectId:o.projectId,status:o.status,feedbackOpen:o.feedback.filter(f=>f.status==='open').length}));
+export const deliveryTodos=(state)=>{const superseded=new Set(state.orders.flatMap(o=>o.feedback.flatMap(f=>(f.correctionHistory||[]).map(h=>h.revisionId))));return state.orders.filter(o=>(['draft','submitted'].includes(o.status)||(o.status==='rejected'&&!superseded.has(o.id)&&!o.revisions.some(id=>state.orders.some(r=>r.id===id&&r.status!=='cancelled'))))||o.feedback.some(f=>f.status==='open')).map(o=>({id:o.id,projectId:o.projectId,status:o.status,feedbackOpen:o.feedback.filter(f=>f.status==='open').length}));};
 
 // Legacy snapshots may omit delivery. Once present, reject malformed references.
 export function validateDeliveryState(state,versions){
@@ -104,7 +104,9 @@ export function validateDeliveryState(state,versions){
  for(const o of state.orders){
   if(!o||typeof o.id!=='string'||ids.has(o.id)||!/^DLV-[1-9]\d*$/.test(o.id)||Number(o.id.slice(4))>state.sequence)fail();ids.add(o.id);
   if(!['draft','submitted','accepted','rejected','cancelled'].includes(o.status)||!o.projectId||!o.customerId||!versions.some(v=>v.id===o.versionId)||!Array.isArray(o.history)||!o.history.length||!Array.isArray(o.feedback)||!Array.isArray(o.revisions))fail();
-  if(o.versionSnapshot&&(o.versionSnapshot.id!==o.versionId||o.versionSnapshot.projectId!==o.projectId))fail();
+  const version=versions.find(v=>v.id===o.versionId);if(version.projectId!==o.projectId)fail();
+  if(o.versionSnapshot&&JSON.stringify(o.versionSnapshot)!==JSON.stringify(version))fail();
+  if(o.status==='accepted'&&(o.acceptedBy!==o.customerId||!Number.isFinite(Date.parse(o.acceptedAt))||!o.history.some(h=>h.action==='accept'&&h.actorId===o.acceptedBy&&h.at===o.acceptedAt&&h.note?.trim())||o.history.some(h=>['create','createRevision','package','submit'].includes(h.action)&&h.actorId===o.acceptedBy)))fail();
   if(['submitted','accepted','rejected'].includes(o.status)&&!o.package)fail();
   if(o.package&&(o.package.versionId!==o.versionId||!o.package.checksum||!o.package.qualityReportId||!o.package.licenseRef||!Array.isArray(o.package.manifest)||!o.package.manifest.length))fail();
   if(o.history.some(h=>!h.actorId||!Number.isFinite(Date.parse(h.at))))fail();
