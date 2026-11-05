@@ -94,7 +94,7 @@ export default function ProcessTour({view,onNavigate}){
  function start(id){const t=tourTracks.find(x=>x.id===id);if(!t)return;setTrackId(id);setStep(0);setOpen(true)}
  function finish(){
   const next={...progress,[trackId]:{completed:true,at:new Date().toISOString()}};
-  setProgress(next);try{localStorage.setItem(persistKey,JSON.stringify(next)}catch{}
+  setProgress(next);try{localStorage.setItem(persistKey,JSON.stringify(next))}catch{}
   setOpen(false);
  }
  const first=step===0,last=step===track.steps.length-1;
