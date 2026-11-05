@@ -136,7 +136,7 @@ export default function ProcessTour({view,onNavigate}){
     if(!target){setBounds(null);return}
     if(lastTarget!==target){lastTarget=target;target.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'})}
     const rect=target.getBoundingClientRect();
-    setBounds({top:Math.max(0,rect.top-5),left:Math.max(0,rect.left-5),width:rect.width+10,height:rect.height+10});
+    setBounds({top:Math.max(0,rect.top-5),left:Math.max(0,rect.left-5),width:rect.width+10,height:rect.height+10,targetClass:typeof target.className==='string'?target.className:'',withinMain:!!target.closest('[data-tour-main]')});
    });
   };
   const timeout=setTimeout(update,110);
@@ -187,7 +187,7 @@ export default function ProcessTour({view,onNavigate}){
  return <><button className="tour-launch" aria-label="打开全流程导览" onClick={()=>setOpen(true)}><IconRoute size={18}/> 流程导览</button>
  {open&&<div className="tour-root" role="dialog" aria-modal="true" aria-label="平台业务流程导览">
   <div className="tour-backdrop" onClick={()=>setOpen(false)}/>
-  {bounds&&<div className="tour-highlight" style={{top:bounds.top,left:bounds.left,width:bounds.width,height:bounds.height}} aria-hidden="true"/>}
+  {bounds&&<div className="tour-highlight" data-target-class={bounds.targetClass} data-within-main={bounds.withinMain} style={{top:bounds.top,left:bounds.left,width:bounds.width,height:bounds.height}} aria-hidden="true"/>}
   <section ref={dialogRef} tabIndex={-1} className="tour-panel">
    <div className="tour-panel-head"><span><IconRoute size={18}/> 业务流程导览</span><button aria-label="关闭导览" onClick={()=>setOpen(false)}><IconX size={19}/></button></div>
    <label className="tour-track-label" htmlFor="tour-track">选择业务主线</label>
