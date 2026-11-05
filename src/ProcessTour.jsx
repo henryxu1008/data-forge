@@ -1,4 +1,4 @@
-import React,{useEffect,useLayoutEffect,useState} from 'react';
+import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {IconArrowLeft,IconArrowRight,IconCheck,IconX,IconRoute,IconRefresh} from '@tabler/icons-react';
 import './tour.css';
 
@@ -67,6 +67,7 @@ export const tourTracks=[
 const persistKey='data-forge-tour-progress-v1';
 function readProgress(){try{return JSON.parse(localStorage.getItem(persistKey)||'{}')}catch{return {}}}
 export default function ProcessTour({view,onNavigate}){
+ const dialogRef=useRef(null);
  const [open,setOpen]=useState(false),[trackId,setTrackId]=useState('overview'),[step,setStep]=useState(0),[bounds,setBounds]=useState(null),[progress,setProgress]=useState(readProgress);
  const track=tourTracks.find(t=>t.id===trackId)||tourTracks[0],current=track.steps[step];
  useEffect(()=>{if(open&&current&&view!==current[0])onNavigate(current[0])},[open,trackId,step]); // route change is purely navigational
@@ -88,8 +89,33 @@ export default function ProcessTour({view,onNavigate}){
  },[open,step,trackId,view]);
  useEffect(()=>{
   if(!open)return;
-  const key=e=>{if(e.key==='Escape'){setOpen(false)}else if(e.key==='ArrowRight'){e.preventDefault();setStep(s=>Math.min(s+1,track.steps.length-1))}else if(e.key==='ArrowLeft'){e.preventDefault();setStep(s=>Math.max(0,s-1))}};
-  window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);
+  const previouslyFocused=document.activeElement;
+  const focusables=()=>Array.from(dialogRef.current?.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])')||[]).filter(el=>el.getClientRects().length>0);
+  const focusFirst=()=>focusables()[0]?.focus({preventScroll:true});
+  // Focus immediately after opening, and return to the launch control after closing.
+  focusFirst();
+  const key=e=>{
+   if(e.key==='Escape'){e.preventDefault();setOpen(false);return}
+   if(e.key==='Tab'){
+    const controls=focusables(),first=controls[0],last=controls[controls.length-1];
+    if(!first){e.preventDefault();dialogRef.current?.focus({preventScroll:true});return}
+    if(!dialogRef.current?.contains(document.activeElement)){e.preventDefault();(e.shiftKey?last:first).focus();return}
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+    return;
+   }
+   if(e.key==='ArrowRight'&&e.target.tagName!=='SELECT'){e.preventDefault();setStep(s=>Math.min(s+1,track.steps.length-1))}
+   else if(e.key==='ArrowLeft'&&e.target.tagName!=='SELECT'){e.preventDefault();setStep(s=>Math.max(0,s-1))}
+  };
+  // Capture keyboard events before controls underneath the dialog can act on them.
+  document.addEventListener('keydown',key,true);
+  const focusin=e=>{if(dialogRef.current&&!dialogRef.current.contains(e.target))focusFirst()};
+  document.addEventListener('focusin',focusin);
+  return()=>{
+   document.removeEventListener('keydown',key,true);
+   document.removeEventListener('focusin',focusin);
+   if(previouslyFocused?.isConnected)previouslyFocused.focus({preventScroll:true});
+  };
  },[open,track.steps.length]);
  function start(id){const t=tourTracks.find(x=>x.id===id);if(!t)return;setTrackId(id);setStep(0);setOpen(true)}
  function finish(){
@@ -102,7 +128,7 @@ export default function ProcessTour({view,onNavigate}){
  {open&&<div className="tour-root" role="dialog" aria-modal="true" aria-label="平台业务流程导览">
   <div className="tour-backdrop" onClick={()=>setOpen(false)}/>
   {bounds&&<div className="tour-highlight" style={{top:bounds.top,left:bounds.left,width:bounds.width,height:bounds.height}} aria-hidden="true"/>}
-  <section className="tour-panel">
+  <section ref={dialogRef} tabIndex={-1} className="tour-panel">
    <div className="tour-panel-head"><span><IconRoute size={18}/> 业务流程导览</span><button aria-label="关闭导览" onClick={()=>setOpen(false)}><IconX size={19}/></button></div>
    <label className="tour-track-label" htmlFor="tour-track">选择业务主线</label>
    <select id="tour-track" value={trackId} onChange={e=>{setTrackId(e.target.value);setStep(0)}}>{tourTracks.map(t=><option key={t.id} value={t.id}>{t.name}{progress[t.id]?.completed?' ✓':''}</option>)}</select>
