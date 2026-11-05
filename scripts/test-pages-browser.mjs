@@ -48,7 +48,7 @@ try{
  await tour.getByRole('button',{name:/下一步/}).click();
  await tour.getByText('结果与追溯',{exact:true}).waitFor();
  await tour.getByRole('button',{name:/下一步/}).click();
- await tour.getByText('建立项目',{exact:true}).waitFor({state:'visible'}).catch(async()=>tour.getByText('场景与项目',{exact:true}).waitFor());
+ await tour.getByRole('heading',{name:'场景与项目'}).waitFor();
  await tour.getByText('模块目标',{exact:true}).waitFor();
  assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'tour opening must move focus into dialog');
  await tour.locator('.tour-small-actions button').last().focus();
