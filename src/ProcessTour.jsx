@@ -146,7 +146,7 @@ export default function ProcessTour({view,onNavigate}){
    <div className="tour-meter" role="progressbar" aria-label="导览进度" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={step+1}><span style={{width:((step+1)/steps.length*100)+'%'}}/></div>
    <div className="tour-stage-label">{current.stageLabel}</div><h3>{current.title}</h3><p className="tour-description">{current.description}</p>{missingTarget&&<p className="tour-unavailable" role="status">当前角色或数据未显示这个区域。可切换有权限的演示成员，或继续下一步。</p>}
    <div className="tour-foot"><button disabled={first} onClick={()=>setStep(s=>s-1)}><IconArrowLeft size={16}/> 上一步</button><button className="tour-primary" onClick={()=>last?finish():setStep(s=>s+1)}>{last?<><IconCheck size={16}/> 完成导览</>:<>下一步 <IconArrowRight size={16}/></>}</button></div>
-   <div className="tour-small-actions">{step<sectionEnd&&<button onClick={()=>setStep(sectionEnd+1)}>跳到下一模块</button>}<button onClick={()=>{setOpen(false)}}>退出，稍后再看</button><button onClick={()=>setStep(0)}><IconRefresh size={14}/> 从头开始</button></div>
+   <div className="tour-small-actions">{step<sectionEnd&&sectionEnd<steps.length-1&&<button onClick={()=>setStep(sectionEnd+1)}>跳到下一模块</button>}<button onClick={()=>{setOpen(false)}}>退出，稍后再看</button><button onClick={()=>setStep(0)}><IconRefresh size={14}/> 从头开始</button></div>
   </section>
  </div>}</>;
 }
