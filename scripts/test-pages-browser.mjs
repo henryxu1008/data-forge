@@ -56,7 +56,7 @@ try{
  await tour.getByText('真实表单字段',{exact:false}).waitFor();
  const realProjectDialog=page.getByRole('dialog',{name:/新建任务/});
  await realProjectDialog.waitFor();
- await tour.getByText(/任务名称/).waitFor();
+ await tour.locator('.tour-field-info strong').getByText('任务名称（必填）').waitFor();
  await tour.getByRole('button',{name:'下一个字段'}).click();
  const projectDialogBounds=await realProjectDialog.boundingBox();
  assert.ok(projectDialogBounds?.width>0,'real project form must be visible during tour');
