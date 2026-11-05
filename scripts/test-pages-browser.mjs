@@ -84,6 +84,45 @@ try{
  await page.keyboard.press('Escape');await tour.waitFor({state:'hidden'});
  assert.equal(await launchTour.evaluate(el=>el===document.activeElement),true,'closing tour must restore launch focus');
 
+ // Routed preview cleanup must preserve destinations selected by Tour controls.
+ await launchTour.click();
+ const openTaskPreview=async()=>{
+  await tour.locator('#tour-track').selectOption('data');
+  await tour.getByRole('button',{name:'从头开始',exact:true}).click();
+  await tour.getByRole('button',{name:/下一步/}).click();
+  await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
+  await tour.getByText('真实表单字段',{exact:false}).waitFor();
+ };
+ const assertCurrentTarget=async()=>{
+  await page.waitForFunction(()=>{
+   const mark=document.querySelector('.tour-highlight');
+   return mark?.dataset.withinMain==='true'&&Number.parseFloat(mark.style.width)>10&&Number.parseFloat(mark.style.height)>10;
+  });
+ };
+ await openTaskPreview();
+ await tour.getByRole('button',{name:'跳到下一模块',exact:true}).click();
+ await tour.getByRole('heading',{name:'定义任务',exact:true}).waitFor();
+ await page.locator('.main-content .p1-form:visible').waitFor({state:'hidden'});
+ await assertCurrentTarget();
+ await openTaskPreview();
+ await tour.locator('#tour-track').selectOption('knowledge');
+ await tour.getByRole('heading',{name:'知识生产',exact:true}).waitFor();
+ await assertCurrentTarget();
+ await openTaskPreview();
+ await tour.locator('#tour-track').selectOption('overview');
+ await tour.getByRole('heading',{name:'全局工作台',exact:true}).waitFor();
+ await assertCurrentTarget();
+ // Visit work orders first so its cached hidden panel precedes deliveries.
+ await tour.locator('#tour-track').selectOption('data');
+ for(let module=0;module<11;module++)await tour.getByRole('button',{name:'跳到下一模块',exact:true}).click();
+ await tour.getByRole('heading',{name:'客户交付与售后',exact:true}).waitFor();
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
+ await tour.getByText(/真实表单字段 1\//).waitFor();
+ await assertCurrentTarget();
+ await tour.getByRole('button',{name:'关闭导览',exact:true}).click();
+ await tour.waitFor({state:'hidden'});
+
  await page.evaluate(()=>document.fonts.ready);
  await nav('基本设置');await page.getByRole('img',{name:'平台图标预览'}).waitFor();
  assert.equal(new URL(await page.getByRole('img',{name:'平台图标预览'}).getAttribute('src'),url).pathname,base+'assets/brand-mark.png');
