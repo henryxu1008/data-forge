@@ -17,7 +17,7 @@ export function findSafeOpener(root,view){
 export function inspectForm(dialog){
  if(!dialog)return [];
  return Array.from(dialog.querySelectorAll('.field')).filter(node=>node.getClientRects().length).map(node=>{
-  const label=node.querySelector('.field-label')?.textContent?.trim()||'配置字段';
+  const label=node.querySelector('.field-label')?.textContent?.replace(/\\s*\\*/g,'').trim()||'配置字段';
   const input=node.querySelector('input,select,textarea');
   const required=!!node.querySelector('.required')||!!input?.required;
   const options=input?.tagName==='SELECT'?Array.from(input.options).filter(x=>x.value).slice(0,5).map(x=>x.textContent.trim()).join('、'):'';
