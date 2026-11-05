@@ -39,6 +39,17 @@ try{
  await launchTour.focus();await launchTour.click();
  const tour=page.getByRole('dialog',{name:'平台业务流程导览'});
  await tour.waitFor();
+ // Full flow must inspect the actual page, not repeatedly highlight first-level navigation.
+ await tour.getByText('模块目标',{exact:true}).waitFor();
+ await page.locator('.tour-highlight').waitFor();
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByText('关键操作',{exact:true}).waitFor();
+ await page.waitForFunction(()=>{const r=document.querySelector('.tour-highlight')?.getBoundingClientRect();const a=document.querySelector('.main-content .page-actions')?.getBoundingClientRect();return r&&a&&Math.abs(r.left-a.left)<8&&Math.abs(r.top-a.top)<8});
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByText('结果与追溯',{exact:true}).waitFor();
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByText('建立项目',{exact:true}).waitFor({state:'visible'}).catch(async()=>tour.getByText('场景与项目',{exact:true}).waitFor());
+ await tour.getByText('模块目标',{exact:true}).waitFor();
  assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'tour opening must move focus into dialog');
  await tour.locator('.tour-small-actions button').last().focus();
  await page.keyboard.press('Tab');
