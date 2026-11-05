@@ -22,7 +22,9 @@ export function inspectForm(dialog){
   const required=!!node.querySelector('.required')||!!input?.required;
   const options=input?.tagName==='SELECT'?Array.from(input.options).filter(x=>x.value).slice(0,5).map(x=>x.textContent.trim()).join('、'):'';
   const maxLength=input?.maxLength>=0&&input?.maxLength<10000?'最多 '+input.maxLength+' 字':'';
-  const hint=[node.querySelector('small')?.textContent?.trim(),input?.getAttribute('placeholder'),options&&'可选：'+options,maxLength].filter(Boolean).join('；');
+  const range=input?.type==='number'?[input.min&&'最小值 '+input.min,input.max&&'最大值 '+input.max].filter(Boolean).join('，'):'';
+  const locked=input?.readOnly?'系统只读':input?.disabled?'当前不可编辑':'';
+  const hint=[node.querySelector('small')?.textContent?.trim(),input?.getAttribute('placeholder'),options&&'可选：'+options,maxLength,range,locked].filter(Boolean).join('；');
   return {label,required,hint,node};
  }).filter(x=>x.node);
 }
