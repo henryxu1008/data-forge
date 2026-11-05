@@ -67,6 +67,12 @@ export const tourTracks=[
  ]}
 ];
 const persistKey='data-forge-tour-progress-v1';
+function visibleInlineForm(root,selector){
+ if(!root||!selector)return null;
+ return Array.from(root.querySelectorAll(selector)).find(node=>
+  !node.closest('[hidden],[aria-hidden="true"]')&&node.getClientRects().length>0&&
+  window.getComputedStyle(node).visibility!=='hidden')||null;
+}
 function readProgress(){try{return JSON.parse(localStorage.getItem(persistKey)||'{}')}catch{return {}}}
 export default function ProcessTour({view,onNavigate}){
  const dialogRef=useRef(null);
@@ -79,12 +85,12 @@ export default function ProcessTour({view,onNavigate}){
  const previewRef=useRef(null);
  useEffect(()=>{if(open&&current&&view!==current.view&&!(previewRef.current?.view===current.view&&previewRef.current.config.inlineRoute===view))onNavigate(current.view)},[open,trackId,step]);
  // Inspect only explicitly allowlisted form dialogs. Never submit or mutate domain state.
- function closePreview(){
+ function closePreview(restoreRoute=true){
   if(!previewRef.current)return;
   const previous=previewRef.current;
   previewRef.current=null;
   const dialog=document.querySelector('.modal-backdrop .modal');
-  if(previous.config.inlineRoute){onNavigate(previous.view)}
+  if(restoreRoute&&previous.config.inlineRoute){onNavigate(previous.view)}
   if(!previous.config.inline&&dialog&&dialog.querySelector('h2')?.textContent?.trim()===previous.config.dialog){
    const cancel=Array.from(dialog.querySelectorAll('button')).find(el=>el.textContent.trim()==='取消');
    if(cancel)cancel.click();
@@ -97,14 +103,14 @@ export default function ProcessTour({view,onNavigate}){
   const config=safePreviews[current.view];
   const root=document.querySelector('[data-tour-main]');
   const opener=findSafeOpener(root,current.view);
-  const inline=config?.inline?root?.querySelector(config.inline):null;
+  const inline=config?.inline?visibleInlineForm(root,config.inline):null;
   if(!config||(!inline&&!opener)){setPreviewError('当前页面未显示安全的表单入口，请检查当前角色权限或切换演示数据。');return}
   previewRef.current={view:current.view,config};
   if(opener)opener.click(); // only allowlisted local form opener, never a submission
   // React may batch the opener's setState; inspect the rendered dialog next frame.
   requestAnimationFrame(()=>{
    if(previewRef.current?.view!==current.view)return;
-   const dialog=config.inline?document.querySelector('[data-tour-main] '+config.inline):Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config.dialog);
+   const dialog=config.inline?visibleInlineForm(document.querySelector('[data-tour-main]'),config.inline):Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config.dialog);
    if(!dialog){previewRef.current=null;setPreviewError('没有找到预期的表单，演示已停止。');return}
    const fields=inspectForm(dialog);
    setPreview({view:current.view,fields:fields.map(({label,required,hint})=>({label,required,hint}))});
@@ -118,8 +124,14 @@ export default function ProcessTour({view,onNavigate}){
   return()=>document.body.classList.remove(cls);
  },[preview?.view]);
  // Always dismiss an inspected form when navigating elsewhere or exiting the tour.
- useEffect(()=>{if(previewRef.current&&(!open||current.stage!==1||(view!==previewRef.current.view&&view!==previewRef.current.config.inlineRoute)))closePreview()},[open,step,trackId,view]);
- useEffect(()=>()=>{if(previewRef.current)closePreview()},[]);
+ useEffect(()=>{
+  const previous=previewRef.current;
+  if(previous&&(!open||current.stage!==1||current.view!==previous.view||(view!==previous.view&&view!==previous.config.inlineRoute))){
+   // A new module owns its destination; cleanup must not overwrite it.
+   closePreview((!open||current.view===previous.view)&&(view===previous.view||view===previous.config.inlineRoute));
+  }
+ },[open,step,trackId,view]);
+ useEffect(()=>()=>{if(previewRef.current)closePreview(false)},[]);
  // route change is purely navigational
  useLayoutEffect(()=>{
   if(!open||!current||(view!==current.view&&view!==safePreviews[current.view]?.inlineRoute)){setBounds(null);return}
@@ -130,7 +142,7 @@ export default function ProcessTour({view,onNavigate}){
    frame=requestAnimationFrame(()=>{
     const root=document.querySelector('[data-tour-main]');
     const config=safePreviews[current.view];
-    const modal=preview&&preview.view===current.view||preview&&config?.inlineRoute===view?(config?.inline?root?.querySelector(config.inline):Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config?.dialog)):null;
+    const modal=preview&&preview.view===current.view||preview&&config?.inlineRoute===view?(config?.inline?visibleInlineForm(root,config.inline):Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config?.dialog)):null;
     const fieldNodes=modal?inspectForm(modal):[];
     const target=modal?(fieldNodes[fieldIndex]?.node||modal):findTourTarget(root,current.stage);
     setMissingTarget(!target);
