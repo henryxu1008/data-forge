@@ -1,5 +1,6 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {IconArrowLeft,IconArrowRight,IconCheck,IconX,IconRoute,IconRefresh} from '@tabler/icons-react';
+import {buildTourSteps,findTourTarget} from './tour-steps.js';
 import './tour.css';
 
 // Keep routes in sync with App.jsx's existing navigation identifiers.
@@ -69,21 +70,27 @@ function readProgress(){try{return JSON.parse(localStorage.getItem(persistKey)||
 export default function ProcessTour({view,onNavigate}){
  const dialogRef=useRef(null);
  const [open,setOpen]=useState(false),[trackId,setTrackId]=useState('overview'),[step,setStep]=useState(0),[bounds,setBounds]=useState(null),[progress,setProgress]=useState(readProgress);
- const track=tourTracks.find(t=>t.id===trackId)||tourTracks[0],current=track.steps[step];
- useEffect(()=>{if(open&&current&&view!==current[0])onNavigate(current[0])},[open,trackId,step]); // route change is purely navigational
+ const track=tourTracks.find(t=>t.id===trackId)||tourTracks[0],steps=buildTourSteps(track),current=steps[Math.min(step,steps.length-1)];
+ const [missingTarget,setMissingTarget]=useState(false);
+ useEffect(()=>{if(open&&current&&view!==current.view)onNavigate(current.view)},[open,trackId,step]); // route change is purely navigational
  useLayoutEffect(()=>{
-  if(!open||!current)return;
+  if(!open||!current||view!==current.view){setBounds(null);return}
   let frame=0;
+  let lastTarget=null;
   const update=()=>{
    cancelAnimationFrame(frame);
    frame=requestAnimationFrame(()=>{
-    const target=document.querySelector('[data-tour-id="'+current[0]+'"]')||document.querySelector('[data-tour-main]');
+    const root=document.querySelector('[data-tour-main]');
+    const target=findTourTarget(root,current.stage);
+    setMissingTarget(!target);
     if(!target){setBounds(null);return}
+    if(lastTarget!==target){lastTarget=target;target.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'})}
     const rect=target.getBoundingClientRect();
-    setBounds(rect.width&&rect.height?{top:Math.max(0,rect.top-5),left:Math.max(0,rect.left-5),width:rect.width+10,height:rect.height+10}:null);
+    setBounds({top:Math.max(0,rect.top-5),left:Math.max(0,rect.left-5),width:rect.width+10,height:rect.height+10});
    });
   };
-  const timeout=setTimeout(update,90);update();
+  const timeout=setTimeout(update,110);
+  update();
   window.addEventListener('resize',update);window.addEventListener('scroll',update,true);
   return()=>{clearTimeout(timeout);cancelAnimationFrame(frame);window.removeEventListener('resize',update);window.removeEventListener('scroll',update,true)};
  },[open,step,trackId,view]);
@@ -104,7 +111,7 @@ export default function ProcessTour({view,onNavigate}){
     else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
     return;
    }
-   if(e.key==='ArrowRight'&&e.target.tagName!=='SELECT'){e.preventDefault();setStep(s=>Math.min(s+1,track.steps.length-1))}
+   if(e.key==='ArrowRight'&&e.target.tagName!=='SELECT'){e.preventDefault();setStep(s=>Math.min(s+1,steps.length-1))}
    else if(e.key==='ArrowLeft'&&e.target.tagName!=='SELECT'){e.preventDefault();setStep(s=>Math.max(0,s-1))}
   };
   // Capture keyboard events before controls underneath the dialog can act on them.
@@ -116,14 +123,16 @@ export default function ProcessTour({view,onNavigate}){
    document.removeEventListener('focusin',focusin);
    if(previouslyFocused?.isConnected)previouslyFocused.focus({preventScroll:true});
   };
- },[open,track.steps.length]);
+ },[open,steps.length]);
  function start(id){const t=tourTracks.find(x=>x.id===id);if(!t)return;setTrackId(id);setStep(0);setOpen(true)}
  function finish(){
   const next={...progress,[trackId]:{completed:true,at:new Date().toISOString()}};
   setProgress(next);try{localStorage.setItem(persistKey,JSON.stringify(next))}catch{}
   setOpen(false);
  }
- const first=step===0,last=step===track.steps.length-1;
+ const first=step===0,last=step===steps.length-1;
+ const sectionEnd=steps.findLastIndex(x=>x.sectionIndex===current.sectionIndex);
+ const moduleTotal=track.steps.length;
  return <><button className="tour-launch" aria-label="打开全流程导览" onClick={()=>setOpen(true)}><IconRoute size={18}/> 流程导览</button>
  {open&&<div className="tour-root" role="dialog" aria-modal="true" aria-label="平台业务流程导览">
   <div className="tour-backdrop" onClick={()=>setOpen(false)}/>
@@ -133,11 +142,11 @@ export default function ProcessTour({view,onNavigate}){
    <label className="tour-track-label" htmlFor="tour-track">选择业务主线</label>
    <select id="tour-track" value={trackId} onChange={e=>{setTrackId(e.target.value);setStep(0)}}>{tourTracks.map(t=><option key={t.id} value={t.id}>{t.name}{progress[t.id]?.completed?' ✓':''}</option>)}</select>
    <p className="tour-track-desc">{track.description}</p>
-   <div className="tour-counter">第 {step+1} / {track.steps.length} 步 <span>只读演示 · 不会执行业务操作</span></div>
-   <div className="tour-meter" role="progressbar" aria-label="导览进度" aria-valuemin={0} aria-valuemax={track.steps.length} aria-valuenow={step+1}><span style={{width:((step+1)/track.steps.length*100)+'%'}}/></div>
-   <h3>{current[1]}</h3><p className="tour-description">{current[2]}</p>
+   <div className="tour-counter">第 {step+1} / {steps.length} 步 · 模块 {current.sectionIndex+1}/{moduleTotal} <span>只读演示 · 不会执行业务操作</span></div>
+   <div className="tour-meter" role="progressbar" aria-label="导览进度" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={step+1}><span style={{width:((step+1)/steps.length*100)+'%'}}/></div>
+   <div className="tour-stage-label">{current.stageLabel}</div><h3>{current.title}</h3><p className="tour-description">{current.description}</p>{missingTarget&&<p className="tour-unavailable" role="status">当前角色或数据未显示这个区域。可切换有权限的演示成员，或继续下一步。</p>}
    <div className="tour-foot"><button disabled={first} onClick={()=>setStep(s=>s-1)}><IconArrowLeft size={16}/> 上一步</button><button className="tour-primary" onClick={()=>last?finish():setStep(s=>s+1)}>{last?<><IconCheck size={16}/> 完成导览</>:<>下一步 <IconArrowRight size={16}/></>}</button></div>
-   <div className="tour-small-actions"><button onClick={()=>{setOpen(false)}}>退出，稍后再看</button><button onClick={()=>setStep(0)}><IconRefresh size={14}/> 从头开始</button></div>
+   <div className="tour-small-actions">{step<sectionEnd&&<button onClick={()=>setStep(sectionEnd+1)}>跳到下一模块</button>}<button onClick={()=>{setOpen(false)}}>退出，稍后再看</button><button onClick={()=>setStep(0)}><IconRefresh size={14}/> 从头开始</button></div>
   </section>
  </div>}</>;
 }
