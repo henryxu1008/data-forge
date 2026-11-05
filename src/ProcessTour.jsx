@@ -96,13 +96,17 @@ export default function ProcessTour({view,onNavigate}){
   const config=safePreviews[current.view];
   const opener=findSafeOpener(document.querySelector('[data-tour-main]'),current.view);
   if(!config||!opener){setPreviewError('当前页面未显示安全的表单入口，请检查当前角色权限或切换演示数据。');return}
-  opener.click(); // only allowlisted local form opener, never a submission
-  const dialog=Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config.dialog);
-  if(!dialog){setPreviewError('当前入口没有打开预期表单，已停止演示。');return}
-  const fields=inspectForm(dialog);
   previewRef.current={view:current.view,config};
-  setPreview({view:current.view,fields:fields.map(({label,required,hint})=>({label,required,hint}))});
-  setFieldIndex(0);setPreviewError('');
+  opener.click(); // only allowlisted local form opener, never a submission
+  // React may batch the opener's setState; inspect the rendered dialog next frame.
+  requestAnimationFrame(()=>{
+   if(previewRef.current?.view!==current.view)return;
+   const dialog=Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config.dialog);
+   if(!dialog){previewRef.current=null;setPreviewError('没有打开预期表单，演示已停止。');return}
+   const fields=inspectForm(dialog);
+   setPreview({view:current.view,fields:fields.map(({label,required,hint})=>({label,required,hint}))});
+   setFieldIndex(0);setPreviewError('');
+  });
  }
  useEffect(()=>{
   if(!preview)return;
