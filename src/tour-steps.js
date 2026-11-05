@@ -54,6 +54,17 @@ export function findTourTarget(root,stage){
    if(!element.getClientRects().length)continue;
    const style=window.getComputedStyle(element);
    if(style.visibility==='hidden'||style.display==='none')continue;
+   const rect=element.getBoundingClientRect();
+   if(rect.width<=0||rect.height<=0)continue;
+   if(stage===1&&!element.innerText?.trim()){
+    const controls=element.matches('button,input,select,textarea,a[href]')?[element]:
+     Array.from(element.querySelectorAll('button,input,select,textarea,a[href]'));
+    if(!controls.some(control=>{
+     const box=control.getBoundingClientRect();
+     return !control.closest('[hidden],[aria-hidden="true"]')&&box.width>0&&box.height>0&&
+      window.getComputedStyle(control).visibility!=='hidden';
+    }))continue;
+   }
    return element;
   }
  }
