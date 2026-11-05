@@ -50,6 +50,7 @@ try{
  await tour.getByRole('button',{name:/下一步/}).click();
  await tour.getByRole('heading',{name:'场景与项目'}).waitFor();
  await tour.getByText('模块目标',{exact:true}).waitFor();
+ const projectsBeforePreview=await page.locator('.pv-compact-stats:visible').first().innerText();
  await tour.getByRole('button',{name:/下一步/}).click();
  await tour.getByText('关键操作',{exact:true}).waitFor();
  await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
@@ -63,6 +64,7 @@ try{
  await tour.getByRole('button',{name:'关闭表单预览'}).click();
  await page.getByRole('heading',{name:'任务管理'}).waitFor();
  await page.getByRole('heading',{name:'新建生产任务'}).waitFor({state:'hidden'});
+ assert.equal(await page.locator('.pv-compact-stats:visible').first().innerText(),projectsBeforePreview,'read-only Tour must not create business tasks');
 
  assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'tour opening must move focus into dialog');
  await tour.locator('.tour-small-actions button').last().focus();
