@@ -84,7 +84,7 @@ export default function ProcessTour({view,onNavigate}){
   const previous=previewRef.current;
   previewRef.current=null;
   const dialog=document.querySelector('.modal-backdrop .modal');
-  if(dialog&&dialog.querySelector('h2')?.textContent?.trim()===previous.config.dialog){
+  if(!previous.config.inline&&dialog&&dialog.querySelector('h2')?.textContent?.trim()===previous.config.dialog){
    const cancel=Array.from(dialog.querySelectorAll('button')).find(el=>el.textContent.trim()==='取消');
    if(cancel)cancel.click();
    else dialog.querySelector('header button[aria-label="关闭弹窗"]')?.click();
@@ -94,15 +94,17 @@ export default function ProcessTour({view,onNavigate}){
  function openPreview(){
   closePreview();
   const config=safePreviews[current.view];
-  const opener=findSafeOpener(document.querySelector('[data-tour-main]'),current.view);
-  if(!config||!opener){setPreviewError('当前页面未显示安全的表单入口，请检查当前角色权限或切换演示数据。');return}
+  const root=document.querySelector('[data-tour-main]');
+  const opener=findSafeOpener(root,current.view);
+  const inline=config?.inline?root?.querySelector(config.inline):null;
+  if(!config||(!inline&&!opener)){setPreviewError('当前页面未显示安全的表单入口，请检查当前角色权限或切换演示数据。');return}
   previewRef.current={view:current.view,config};
-  opener.click(); // only allowlisted local form opener, never a submission
+  if(opener)opener.click(); // only allowlisted local form opener, never a submission
   // React may batch the opener's setState; inspect the rendered dialog next frame.
   requestAnimationFrame(()=>{
    if(previewRef.current?.view!==current.view)return;
-   const dialog=Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config.dialog);
-   if(!dialog){previewRef.current=null;setPreviewError('没有打开预期表单，演示已停止。');return}
+   const dialog=config.inline?document.querySelector('[data-tour-main] '+config.inline):Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config.dialog);
+   if(!dialog){previewRef.current=null;setPreviewError('没有找到预期的表单，演示已停止。');return}
    const fields=inspectForm(dialog);
    setPreview({view:current.view,fields:fields.map(({label,required,hint})=>({label,required,hint}))});
    setFieldIndex(0);setPreviewError('');
@@ -110,9 +112,10 @@ export default function ProcessTour({view,onNavigate}){
  }
  useEffect(()=>{
   if(!preview)return;
-  document.body.classList.add('tour-form-preview-open');
-  return()=>document.body.classList.remove('tour-form-preview-open');
- },[!!preview]);
+  const cls=safePreviews[preview.view]?.inline?'tour-inline-preview-open':'tour-form-preview-open';
+  document.body.classList.add(cls);
+  return()=>document.body.classList.remove(cls);
+ },[preview?.view]);
  // Always dismiss an inspected form when navigating elsewhere or exiting the tour.
  useEffect(()=>{if(previewRef.current&&(previewRef.current.view!==current.view||!open||current.stage!==1))closePreview()},[open,step,trackId,view]);
  useEffect(()=>()=>{if(previewRef.current)closePreview()},[]);
@@ -125,7 +128,8 @@ export default function ProcessTour({view,onNavigate}){
    cancelAnimationFrame(frame);
    frame=requestAnimationFrame(()=>{
     const root=document.querySelector('[data-tour-main]');
-    const modal=preview&&preview.view===current.view?Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===safePreviews[current.view]?.dialog):null;
+    const config=safePreviews[current.view];
+    const modal=preview&&preview.view===current.view?(config?.inline?root?.querySelector(config.inline):Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config?.dialog)):null;
     const fieldNodes=modal?inspectForm(modal):[];
     const target=modal?(fieldNodes[fieldIndex]?.node||modal):findTourTarget(root,current.stage);
     setMissingTarget(!target);
