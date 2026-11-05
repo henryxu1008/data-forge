@@ -138,6 +138,29 @@ try{
  await tour.getByRole('button',{name:'关闭导览',exact:true}).click();
  await tour.waitFor({state:'hidden'});
 
+ // A real modal preview must not cover Tour controls or the field highlight.
+ await launchTour.click();
+ await tour.locator('#tour-track').selectOption('knowledge');
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
+ await page.locator('.modal-backdrop .modal:visible').waitFor();
+ await tour.getByText(/真实表单字段 1\//).waitFor();
+ assert.equal(await tour.evaluate(el=>el.parentElement===document.body),true,'Tour must escape the topbar stacking context');
+ await page.waitForFunction(()=>{
+  const root=document.querySelector('.tour-root'),modal=document.querySelector('.modal-backdrop');
+  return root&&modal&&Number(getComputedStyle(root).zIndex)>Number(getComputedStyle(modal).zIndex);
+ });
+ const previewClose=tour.getByRole('button',{name:'关闭表单预览'});
+ assert.equal(await previewClose.evaluate(el=>{
+  const rect=el.getBoundingClientRect();
+  return el.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));
+ }),true,'Tour preview controls must be topmost above the real modal');
+ await tour.getByRole('button',{name:'下一个字段'}).click();
+ await previewClose.click();
+ await page.locator('.modal-backdrop .modal:visible').waitFor({state:'hidden'});
+ await tour.getByRole('button',{name:'关闭导览',exact:true}).click();
+ await tour.waitFor({state:'hidden'});
+
  await page.evaluate(()=>document.fonts.ready);
  await nav('基本设置');await page.getByRole('img',{name:'平台图标预览'}).waitFor();
  assert.equal(new URL(await page.getByRole('img',{name:'平台图标预览'}).getAttribute('src'),url).pathname,base+'assets/brand-mark.png');
