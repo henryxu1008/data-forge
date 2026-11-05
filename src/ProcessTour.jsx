@@ -1,4 +1,5 @@
 import React,{useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {IconArrowLeft,IconArrowRight,IconCheck,IconX,IconRoute,IconRefresh} from '@tabler/icons-react';
 import {buildTourSteps,findTourTarget} from './tour-steps.js';
 import {safePreviews,findSafeOpener,inspectForm} from './tour-interactions.js';
@@ -209,7 +210,7 @@ export default function ProcessTour({view,onNavigate}){
  const allowPreview=current.stage===1&&!!safePreviews[current.view];
  const moduleTotal=track.steps.length;
  return <><button className="tour-launch" aria-label="打开全流程导览" onClick={()=>setOpen(true)}><IconRoute size={18}/> 流程导览</button>
- {open&&<div className="tour-root" data-preview-open={!!preview} role="dialog" aria-modal="true" aria-label="平台业务流程导览">
+ {open&&createPortal(<div className="tour-root" data-preview-open={!!preview} role="dialog" aria-modal="true" aria-label="平台业务流程导览">
   <div className="tour-backdrop" onClick={()=>setOpen(false)}/>
   {bounds&&<div className="tour-highlight" data-target-class={bounds.targetClass} data-within-main={bounds.withinMain} style={{top:bounds.top,left:bounds.left,width:bounds.width,height:bounds.height}} aria-hidden="true"/>}
   <section ref={dialogRef} tabIndex={-1} className="tour-panel">
@@ -232,5 +233,5 @@ export default function ProcessTour({view,onNavigate}){
    <div className="tour-foot"><button disabled={first} onClick={()=>setStep(s=>s-1)}><IconArrowLeft size={16}/> 上一步</button><button className="tour-primary" onClick={()=>last?finish():setStep(s=>s+1)}>{last?<><IconCheck size={16}/> 完成导览</>:<>下一步 <IconArrowRight size={16}/></>}</button></div>
    <div className="tour-small-actions">{step<sectionEnd&&sectionEnd<steps.length-1&&<button onClick={()=>setStep(sectionEnd+1)}>跳到下一模块</button>}<button onClick={()=>{setOpen(false)}}>退出，稍后再看</button><button onClick={()=>setStep(0)}><IconRefresh size={14}/> 从头开始</button></div>
   </section>
- </div>}</>;
+ </div>,document.body)}</>;
 }
