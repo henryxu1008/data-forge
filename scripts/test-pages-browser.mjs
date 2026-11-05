@@ -39,7 +39,43 @@ try{
  await launchTour.focus();await launchTour.click();
  const tour=page.getByRole('dialog',{name:'平台业务流程导览'});
  await tour.waitFor();
- assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'tour opening must move focus into dialog');
+ // Full flow must inspect the actual page, not repeatedly highlight first-level navigation.
+ await tour.getByText('模块目标',{exact:true}).waitFor();
+ await page.locator('.tour-highlight').waitFor();
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByText('关键操作',{exact:true}).waitFor();
+ await page.waitForFunction(()=>{const target=document.querySelector('.tour-highlight');return target?.dataset.withinMain==='true'&&/(page-actions|pv-list-toolbar|cl-toolbar)/.test(target.dataset.targetClass||'')});
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByText('结果与追溯',{exact:true}).waitFor();
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByRole('heading',{name:'场景与项目'}).waitFor();
+ await tour.getByText('模块目标',{exact:true}).waitFor();
+ const projectsBeforePreview=await page.locator('.pv-compact-stats:visible').first().innerText();
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByText('关键操作',{exact:true}).waitFor();
+ await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
+ await tour.getByText('真实表单字段',{exact:false}).waitFor();
+ const realProjectForm=page.locator('.main-content .p1-form:visible').first();
+ await realProjectForm.waitFor();
+ await page.getByRole('heading',{name:'新建生产任务'}).waitFor();
+ await tour.locator('.tour-field-info strong').getByText('任务名称（必填）').waitFor();
+ await tour.getByRole('button',{name:'下一个字段'}).click();
+ assert.ok((await realProjectForm.boundingBox())?.width>0,'tour must open actual routed task form');
+ await tour.getByRole('button',{name:'关闭表单预览'}).click();
+ await page.getByRole('heading',{name:'任务管理'}).waitFor();
+ await page.getByRole('heading',{name:'新建生产任务'}).waitFor({state:'hidden'});
+ assert.equal(await page.locator('.pv-compact-stats:visible').first().innerText(),projectsBeforePreview,'read-only Tour must not create business tasks');
+
+ const previewButton=tour.getByRole('button',{name:'查看真实操作表单（只读）'});
+ assert.equal(await previewButton.evaluate(el=>el===document.activeElement),true,'closing preview must restore its surviving opener');
+ await previewButton.click();
+ await tour.getByText('真实表单字段',{exact:false}).waitFor();
+ assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'opening preview must retain Tour focus');
+ await page.keyboard.press('Escape');
+ await page.getByRole('heading',{name:'任务管理'}).waitFor();
+ assert.equal(await previewButton.evaluate(el=>el===document.activeElement),true,'Escape must close only preview and restore its opener');
+ assert.equal(await page.locator('.pv-compact-stats:visible').first().innerText(),projectsBeforePreview,'Escape preview must not create tasks');
+ assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'preview transitions must retain Tour focus');
  await tour.locator('.tour-small-actions button').last().focus();
  await page.keyboard.press('Tab');
  assert.equal(await tour.getByRole('button',{name:'关闭导览'}).evaluate(el=>el===document.activeElement),true,'Tab must wrap to first tour control');
@@ -47,6 +83,83 @@ try{
  assert.equal(await tour.locator('.tour-small-actions button').last().evaluate(el=>el===document.activeElement),true,'Shift+Tab must wrap to last tour control');
  await page.keyboard.press('Escape');await tour.waitFor({state:'hidden'});
  assert.equal(await launchTour.evaluate(el=>el===document.activeElement),true,'closing tour must restore launch focus');
+
+ // Routed preview cleanup must preserve destinations selected by Tour controls.
+ await launchTour.click();
+ const openTaskPreview=async()=>{
+  await tour.locator('#tour-track').selectOption('data');
+  await tour.getByRole('button',{name:'从头开始',exact:true}).click();
+  await tour.getByRole('button',{name:/下一步/}).click();
+  await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
+  await tour.getByText('真实表单字段',{exact:false}).waitFor();
+ };
+ const assertCurrentTarget=async()=>{
+  await page.waitForFunction(()=>{
+   const mark=document.querySelector('.tour-highlight');
+   return mark?.dataset.withinMain==='true'&&Number.parseFloat(mark.style.width)>10&&Number.parseFloat(mark.style.height)>10;
+  });
+ };
+ await openTaskPreview();
+ await tour.getByRole('button',{name:'跳到下一模块',exact:true}).click();
+ await tour.getByRole('heading',{name:'定义任务',exact:true}).waitFor();
+ await page.locator('.main-content .p1-form:visible').waitFor({state:'hidden'});
+ await assertCurrentTarget();
+ await openTaskPreview();
+ await tour.locator('#tour-track').selectOption('knowledge');
+ await tour.getByRole('heading',{name:'知识生产',exact:true}).waitFor();
+ await assertCurrentTarget();
+ await openTaskPreview();
+ await tour.locator('#tour-track').selectOption('overview');
+ await tour.getByRole('heading',{name:'全局工作台',exact:true}).waitFor();
+ await assertCurrentTarget();
+ // Visit work orders first so its cached hidden panel precedes deliveries.
+ await tour.locator('#tour-track').selectOption('data');
+ const assertNonemptyAction=async()=>{
+  await page.waitForFunction(()=>{
+   const mark=document.querySelector('.tour-highlight');
+   return mark?.dataset.withinMain==='true'&&Number.parseFloat(mark.style.width)>10&&
+    Number.parseFloat(mark.style.height)>10&&!/page-actions/.test(mark.dataset.targetClass||'');
+  });
+ };
+ for(let module=0;module<11;module++){
+  if(module===6){
+   await tour.getByRole('button',{name:/下一步/}).click();
+   await tour.getByText('关键操作',{exact:true}).waitFor();
+   await assertNonemptyAction();
+  }
+  await tour.getByRole('button',{name:'跳到下一模块',exact:true}).click();
+ }
+ await tour.getByRole('heading',{name:'客户交付与售后',exact:true}).waitFor();
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await assertNonemptyAction();
+ await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
+ await tour.getByText(/真实表单字段 1\//).waitFor();
+ await assertCurrentTarget();
+ await tour.getByRole('button',{name:'关闭导览',exact:true}).click();
+ await tour.waitFor({state:'hidden'});
+
+ // A real modal preview must not cover Tour controls or the field highlight.
+ await launchTour.click();
+ await tour.locator('#tour-track').selectOption('knowledge');
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
+ await page.locator('.modal-backdrop .modal:visible').waitFor();
+ await tour.getByText(/真实表单字段 1\//).waitFor();
+ assert.equal(await tour.evaluate(el=>el.parentElement===document.body),true,'Tour must escape the topbar stacking context');
+ await page.waitForFunction(()=>{
+  const root=document.querySelector('.tour-root'),modal=document.querySelector('.modal-backdrop');
+  return root&&modal&&Number(getComputedStyle(root).zIndex)>Number(getComputedStyle(modal).zIndex);
+ });
+ const previewClose=tour.getByRole('button',{name:'关闭表单预览'});
+ assert.equal(await previewClose.evaluate(el=>{
+  const rect=el.getBoundingClientRect();
+  return el.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));
+ }),true,'Tour preview controls must be topmost above the real modal');
+ await tour.getByRole('button',{name:'下一个字段'}).click();
+ await previewClose.click();
+ await page.locator('.modal-backdrop .modal:visible').waitFor({state:'hidden'});
+ await tour.getByRole('button',{name:'关闭导览',exact:true}).click();
+ await tour.waitFor({state:'hidden'});
 
  await page.evaluate(()=>document.fonts.ready);
  await nav('基本设置');await page.getByRole('img',{name:'平台图标预览'}).waitFor();
