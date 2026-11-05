@@ -114,9 +114,24 @@ try{
  await assertCurrentTarget();
  // Visit work orders first so its cached hidden panel precedes deliveries.
  await tour.locator('#tour-track').selectOption('data');
- for(let module=0;module<11;module++)await tour.getByRole('button',{name:'跳到下一模块',exact:true}).click();
+ const assertNonemptyAction=async()=>{
+  await page.waitForFunction(()=>{
+   const mark=document.querySelector('.tour-highlight');
+   return mark?.dataset.withinMain==='true'&&Number.parseFloat(mark.style.width)>10&&
+    Number.parseFloat(mark.style.height)>10&&!/page-actions/.test(mark.dataset.targetClass||'');
+  });
+ };
+ for(let module=0;module<11;module++){
+  if(module===6){
+   await tour.getByRole('button',{name:/下一步/}).click();
+   await tour.getByText('关键操作',{exact:true}).waitFor();
+   await assertNonemptyAction();
+  }
+  await tour.getByRole('button',{name:'跳到下一模块',exact:true}).click();
+ }
  await tour.getByRole('heading',{name:'客户交付与售后',exact:true}).waitFor();
  await tour.getByRole('button',{name:/下一步/}).click();
+ await assertNonemptyAction();
  await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
  await tour.getByText(/真实表单字段 1\//).waitFor();
  await assertCurrentTarget();
