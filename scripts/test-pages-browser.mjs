@@ -44,7 +44,7 @@ try{
  await page.locator('.tour-highlight').waitFor();
  await tour.getByRole('button',{name:/下一步/}).click();
  await tour.getByText('关键操作',{exact:true}).waitFor();
- await page.waitForFunction(()=>{const r=document.querySelector('.tour-highlight')?.getBoundingClientRect();const a=document.querySelector('.main-content .page-actions')?.getBoundingClientRect();return r&&a&&Math.abs(r.left-a.left)<8&&Math.abs(r.top-a.top)<8});
+ await page.waitForFunction(()=>{const target=document.querySelector('.tour-highlight');return target?.dataset.withinMain==='true'&&/(page-actions|pv-list-toolbar|cl-toolbar)/.test(target.dataset.targetClass||'')});
  await tour.getByRole('button',{name:/下一步/}).click();
  await tour.getByText('结果与追溯',{exact:true}).waitFor();
  await tour.getByRole('button',{name:/下一步/}).click();
