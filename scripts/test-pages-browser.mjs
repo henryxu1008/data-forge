@@ -66,7 +66,16 @@ try{
  await page.getByRole('heading',{name:'新建生产任务'}).waitFor({state:'hidden'});
  assert.equal(await page.locator('.pv-compact-stats:visible').first().innerText(),projectsBeforePreview,'read-only Tour must not create business tasks');
 
- assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'tour opening must move focus into dialog');
+ const previewButton=tour.getByRole('button',{name:'查看真实操作表单（只读）'});
+ assert.equal(await previewButton.evaluate(el=>el===document.activeElement),true,'closing preview must restore its surviving opener');
+ await previewButton.click();
+ await tour.getByText('真实表单字段',{exact:false}).waitFor();
+ assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'opening preview must retain Tour focus');
+ await page.keyboard.press('Escape');
+ await page.getByRole('heading',{name:'任务管理'}).waitFor();
+ assert.equal(await previewButton.evaluate(el=>el===document.activeElement),true,'Escape must close only preview and restore its opener');
+ assert.equal(await page.locator('.pv-compact-stats:visible').first().innerText(),projectsBeforePreview,'Escape preview must not create tasks');
+ assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'preview transitions must retain Tour focus');
  await tour.locator('.tour-small-actions button').last().focus();
  await page.keyboard.press('Tab');
  assert.equal(await tour.getByRole('button',{name:'关闭导览'}).evaluate(el=>el===document.activeElement),true,'Tab must wrap to first tour control');
