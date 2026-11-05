@@ -77,13 +77,14 @@ export default function ProcessTour({view,onNavigate}){
  const [fieldIndex,setFieldIndex]=useState(0);
  const [previewError,setPreviewError]=useState('');
  const previewRef=useRef(null);
- useEffect(()=>{if(open&&current&&view!==current.view)onNavigate(current.view)},[open,trackId,step]);
+ useEffect(()=>{if(open&&current&&view!==current.view&&!(previewRef.current?.view===current.view&&previewRef.current.config.inlineRoute===view))onNavigate(current.view)},[open,trackId,step]);
  // Inspect only explicitly allowlisted form dialogs. Never submit or mutate domain state.
  function closePreview(){
   if(!previewRef.current)return;
   const previous=previewRef.current;
   previewRef.current=null;
   const dialog=document.querySelector('.modal-backdrop .modal');
+  if(previous.config.inlineRoute){onNavigate(previous.view)}
   if(!previous.config.inline&&dialog&&dialog.querySelector('h2')?.textContent?.trim()===previous.config.dialog){
    const cancel=Array.from(dialog.querySelectorAll('button')).find(el=>el.textContent.trim()==='取消');
    if(cancel)cancel.click();
@@ -117,11 +118,11 @@ export default function ProcessTour({view,onNavigate}){
   return()=>document.body.classList.remove(cls);
  },[preview?.view]);
  // Always dismiss an inspected form when navigating elsewhere or exiting the tour.
- useEffect(()=>{if(previewRef.current&&(previewRef.current.view!==current.view||!open||current.stage!==1))closePreview()},[open,step,trackId,view]);
+ useEffect(()=>{if(previewRef.current&&(!open||current.stage!==1||(view!==previewRef.current.view&&view!==previewRef.current.config.inlineRoute)))closePreview()},[open,step,trackId,view]);
  useEffect(()=>()=>{if(previewRef.current)closePreview()},[]);
  // route change is purely navigational
  useLayoutEffect(()=>{
-  if(!open||!current||view!==current.view){setBounds(null);return}
+  if(!open||!current||(view!==current.view&&view!==safePreviews[current.view]?.inlineRoute)){setBounds(null);return}
   let frame=0;
   let lastTarget=null;
   const update=()=>{
@@ -129,7 +130,7 @@ export default function ProcessTour({view,onNavigate}){
    frame=requestAnimationFrame(()=>{
     const root=document.querySelector('[data-tour-main]');
     const config=safePreviews[current.view];
-    const modal=preview&&preview.view===current.view?(config?.inline?root?.querySelector(config.inline):Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config?.dialog)):null;
+    const modal=preview&&preview.view===current.view||preview&&config?.inlineRoute===view?(config?.inline?root?.querySelector(config.inline):Array.from(document.querySelectorAll('.modal-backdrop .modal')).find(el=>el.querySelector('h2')?.textContent?.trim()===config?.dialog)):null;
     const fieldNodes=modal?inspectForm(modal):[];
     const target=modal?(fieldNodes[fieldIndex]?.node||modal):findTourTarget(root,current.stage);
     setMissingTarget(!target);
