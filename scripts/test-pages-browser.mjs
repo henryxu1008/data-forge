@@ -33,6 +33,21 @@ try{
  const persist=async action=>{const saving=page.getByRole('banner').getByText('正在自动保存',{exact:true}).waitFor();await action();await saving;await saved();};
  const checkDefaultLogo=async()=>{await page.waitForFunction(()=>{const image=document.querySelector('.brand img');return image?.complete&&image.naturalWidth>0;});assert.equal(new URL(await page.locator('.brand img').getAttribute('src'),url).pathname,base+'assets/brand-mark.png');};
  await page.goto(url,{waitUntil:'domcontentloaded'});await saved();await checkDefaultLogo();
+ // The tour must be a keyboard-modal dialog: opening moves focus in, Tab cycles
+ // inside its controls, Escape restores launch focus, and no business controls run.
+ const launchTour=page.getByRole('button',{name:'打开全流程导览'});
+ await launchTour.focus();await launchTour.click();
+ const tour=page.getByRole('dialog',{name:'平台业务流程导览'});
+ await tour.waitFor();
+ assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'tour opening must move focus into dialog');
+ await tour.locator('.tour-small-actions button').last().focus();
+ await page.keyboard.press('Tab');
+ assert.equal(await tour.getByRole('button',{name:'关闭导览'}).evaluate(el=>el===document.activeElement),true,'Tab must wrap to first tour control');
+ await page.keyboard.press('Shift+Tab');
+ assert.equal(await tour.locator('.tour-small-actions button').last().evaluate(el=>el===document.activeElement),true,'Shift+Tab must wrap to last tour control');
+ await page.keyboard.press('Escape');await tour.waitFor({state:'hidden'});
+ assert.equal(await launchTour.evaluate(el=>el===document.activeElement),true,'closing tour must restore launch focus');
+
  await page.evaluate(()=>document.fonts.ready);
  await nav('基本设置');await page.getByRole('img',{name:'平台图标预览'}).waitFor();
  assert.equal(new URL(await page.getByRole('img',{name:'平台图标预览'}).getAttribute('src'),url).pathname,base+'assets/brand-mark.png');
