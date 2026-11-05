@@ -185,7 +185,7 @@ export default function ProcessTour({view,onNavigate}){
  const allowPreview=current.stage===1&&!!safePreviews[current.view];
  const moduleTotal=track.steps.length;
  return <><button className="tour-launch" aria-label="打开全流程导览" onClick={()=>setOpen(true)}><IconRoute size={18}/> 流程导览</button>
- {open&&<div className="tour-root" role="dialog" aria-modal="true" aria-label="平台业务流程导览">
+ {open&&<div className="tour-root" data-preview-open={!!preview} role="dialog" aria-modal="true" aria-label="平台业务流程导览">
   <div className="tour-backdrop" onClick={()=>setOpen(false)}/>
   {bounds&&<div className="tour-highlight" data-target-class={bounds.targetClass} data-within-main={bounds.withinMain} style={{top:bounds.top,left:bounds.left,width:bounds.width,height:bounds.height}} aria-hidden="true"/>}
   <section ref={dialogRef} tabIndex={-1} className="tour-panel">
