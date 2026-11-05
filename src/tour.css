@@ -16,3 +16,8 @@ body.tour-form-preview-open .modal :is(button,input,select,textarea){pointer-eve
 body.tour-form-preview-open .tour-panel{z-index:4}
 body.tour-form-preview-open .tour-highlight{z-index:3}
 @media(max-width:820px){body.tour-form-preview-open .modal{margin:0;max-height:43vh;align-self:flex-start}body.tour-form-preview-open .tour-panel{max-height:51vh;bottom:8px}}
+
+/* Keep the Tour focus/controls above inspected dialogs; the real form stays inert behind its backdrop. */
+body.tour-form-preview-open .tour-root{z-index:1300}
+body.tour-form-preview-open .modal-backdrop{z-index:1250}
+.tour-root[data-preview-open="true"] .tour-backdrop{background:rgba(5,13,20,.24)}
