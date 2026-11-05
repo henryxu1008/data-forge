@@ -145,9 +145,20 @@ export default function ProcessTour({view,onNavigate}){
   window.addEventListener('resize',update);window.addEventListener('scroll',update,true);
   return()=>{clearTimeout(timeout);cancelAnimationFrame(frame);window.removeEventListener('resize',update);window.removeEventListener('scroll',update,true)};
  },[open,step,trackId,view,preview,fieldIndex]);
+ // Removing/replacing a focused preview control does not dispatch focusin.
+ // Repair focus after React commits, without resetting valid keyboard navigation.
+ useLayoutEffect(()=>{
+  const panel=dialogRef.current;
+  if(!open||!panel)return;
+  const active=document.activeElement;
+  if(panel.contains(active)&&!active.disabled)return;
+  const target=panel.querySelector('.tour-inspect-button,.tour-preview-header button')||
+   panel.querySelector('button:not([disabled])');
+  (target||panel).focus({preventScroll:true});
+ });
  useEffect(()=>{
   if(!open)return;
-  const previouslyFocused=document.activeElement;
+  const previouslyFocused=document.querySelector('.tour-launch');
   const focusables=()=>Array.from(dialogRef.current?.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])')||[]).filter(el=>el.getClientRects().length>0);
   const focusFirst=()=>focusables()[0]?.focus({preventScroll:true});
   // Focus immediately after opening, and return to the launch control after closing.
