@@ -50,6 +50,20 @@ try{
  await tour.getByRole('button',{name:/下一步/}).click();
  await tour.getByRole('heading',{name:'场景与项目'}).waitFor();
  await tour.getByText('模块目标',{exact:true}).waitFor();
+ await tour.getByRole('button',{name:/下一步/}).click();
+ await tour.getByText('关键操作',{exact:true}).waitFor();
+ await tour.getByRole('button',{name:'查看真实操作表单（只读）'}).click();
+ await tour.getByText('真实表单字段',{exact:false}).waitFor();
+ const realProjectDialog=page.getByRole('dialog',{name:/新建任务/});
+ await realProjectDialog.waitFor();
+ await tour.getByText(/任务名称/).waitFor();
+ await tour.getByRole('button',{name:'下一个字段'}).click();
+ const projectDialogBounds=await realProjectDialog.boundingBox();
+ assert.ok(projectDialogBounds?.width>0,'real project form must be visible during tour');
+ assert.equal(await page.getByRole('button',{name:'保存任务'}).evaluate(el=>getComputedStyle(el).pointerEvents), 'none','form submission must not be pointer-interactive during tour');
+ await tour.getByRole('button',{name:'关闭表单预览'}).click();
+ await realProjectDialog.waitFor({state:'hidden'});
+
  assert.equal(await tour.evaluate(el=>el.contains(document.activeElement)),true,'tour opening must move focus into dialog');
  await tour.locator('.tour-small-actions button').last().focus();
  await page.keyboard.press('Tab');
