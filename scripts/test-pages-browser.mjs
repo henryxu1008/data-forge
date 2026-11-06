@@ -39,9 +39,18 @@ try{
  await launchTour.focus();await launchTour.click();
  const tour=page.getByRole('dialog',{name:'平台业务流程导览'});
  await tour.waitFor();
+ const waitForClearTarget=()=>page.waitForFunction(()=>{
+  const panel=document.querySelector('.tour-panel'),target=document.querySelector('.tour-highlight');
+  if(!panel||!target||!target.getClientRects().length)return false;
+  const box=panel.getBoundingClientRect(),highlight=target.getBoundingClientRect();
+  const separate=box.right<=highlight.left||box.left>=highlight.right||
+   box.bottom<=highlight.top||box.top>=highlight.bottom;
+  return separate&&box.left>=0&&box.top>=0&&box.right<=innerWidth&&box.bottom<=innerHeight;
+ });
  // Full flow must inspect the actual page, not repeatedly highlight first-level navigation.
  await tour.getByText('模块目标',{exact:true}).waitFor();
  await page.locator('.tour-highlight').waitFor();
+ await waitForClearTarget();
  await tour.getByRole('button',{name:/下一步/}).click();
  await tour.getByText('关键操作',{exact:true}).waitFor();
  await page.waitForFunction(()=>{const target=document.querySelector('.tour-highlight');return target?.dataset.withinMain==='true'&&/(page-actions|pv-list-toolbar|cl-toolbar)/.test(target.dataset.targetClass||'')});
@@ -155,8 +164,14 @@ try{
   const rect=el.getBoundingClientRect();
   return el.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));
  }),true,'Tour preview controls must be topmost above the real modal');
+ await waitForClearTarget();
  await tour.getByRole('button',{name:'下一个字段'}).click();
+ await tour.getByText(/真实表单字段 2\//).waitFor();
+ await waitForClearTarget();
+ await page.setViewportSize({width:390,height:844});
+ await waitForClearTarget();
  await previewClose.click();
+ await page.setViewportSize({width:1440,height:1000});
  await page.locator('.modal-backdrop .modal:visible').waitFor({state:'hidden'});
  await tour.getByRole('button',{name:'关闭导览',exact:true}).click();
  await tour.waitFor({state:'hidden'});
