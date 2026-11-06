@@ -1,30 +1,30 @@
 // Page-level anchor preferences for the guided product walkthrough.
 // Each stage uses existing UI elements; it never invokes a business action.
 export const tourDetails={
- workbench:['从工作台的入口进入数据接入或运营恢复，了解待办与项目进度如何汇总。','查看当前空间的指标和待办，确认下一步需要处理的任务。'],
- projects:['点击“新建任务”可建立业务项目，明确责任人与所属空间。','在任务列表中查看状态和负责人，之后进入任务定义。'],
- definitions:['从任务模板或任务定义入口确认输入、输出和目标。','检查任务规范与验收指标，供下游生产引用。'],
- labels:['通过“新建标签体系”维护分类与标注规则。','检查标签结构与规范版本，避免标注人员使用不一致的口径。'],
- governance:['进入治理操作区确认项目、许可和验收的前置条件。','查看治理记录与证据；权限不足时不应绕过门禁。'],
- ingestion:['在接入向导中选择数据源，填写必要信息并预览。','检查校验结果，再确认接入到对应数据集。'],
- processing:['选择清洗规则与增强方式，预览处理前后的变化。','检查差异和质量结果，保留来源与处理版本。'],
- 'work-orders':['工单入口用于分派生产、审核人员、期限及抽检策略。','在工单列表查看领取、返工、审核与仲裁状态。'],
- 'ai-annotation':['配置预标注模型与任务，确认绑定的数据和模型版本。','查看预标注结果与人工接管流程，不能直接视作验收通过。'],
- review:['选择待审核样本，核对标签并记录审核结论。','检查批次质检、复核历史和可发布条件。'],
- datasets:['查看数据集版本、生产批次与质量记录。','检查版本状态、来源及下游可复用的冻结产物。'],
- models:['从模型仓库选择模型和对应版本。','核对模型和数据来源关联，确认下一步训练所需版本。'],
- training:['通过训练任务入口设置数据版本和模拟训练参数。','检查任务状态、产物与日志；当前不调用真实 GPU。'],
- evaluation:['查看评测任务和质量指标，对照发布阈值。','核对评测证据与失败原因，确认是否满足发布门禁。'],
- deployments:['在服务发布区查看发布条件、版本与部署状态。','检查已发布服务的状态和下线/回滚路径。'],
- testing:['使用在线测试区输入测试内容并检查模拟输出。','查看结果与来源记录，不将演示结果等同真实模型效果。'],
- knowledge:['选择接入文档或新建知识库，检查解析和问答整理。','核对知识版本、索引状态与文档来源。'],
- agents:['选定项目并创建或管理智能体及其知识来源。','查看智能体配置和现有执行记录。'],
- canvas:['进入流程画布查看节点及节点之间的逻辑。','检查节点配置、连接关系及流程产出。'],
- feedback:['提交已有调用的反馈并创建改进任务。','核对修订、复测、追溯和关闭的结果。'],
- marketplace:['选择可上架成果并配置授权用途和期限。','查看授权状态、使用记录以及下架后的限制。'],
- deliveries:['登记交付单及冻结版本，指定验收人与交付证据。','查看客户签收、拒收、补交和售后纠错历史。'],
- operations:['从运营入口查看告警、权限与恢复功能。','检查运行记录、会话快照和异常恢复证据。'],
- 'settings-general':['查看基础设置中的空间、成员和治理参数入口。','检查实际配置内容；导览不保存任何设置。']
+ workbench:['打开数据接入或运营恢复。','查看待办和项目进度。'],
+ projects:['点击「新建任务」。','查看任务状态和负责人。'],
+ definitions:['打开任务模板或任务定义。','核对产出和验收指标。'],
+ labels:['点击「新建标签体系」。','核对标签结构和规范版本。'],
+ governance:['核对项目、来源许可和验收条件。','查看治理记录和证据。'],
+ ingestion:['选择数据源并预览。','核对校验结果和目标数据集。'],
+ processing:['选择清洗规则和增强方式。','比较处理前后差异和质量。'],
+ 'work-orders':['指定生产人、审核人和期限。','查看工单状态和复核记录。'],
+ 'ai-annotation':['选择预标注模型和数据版本。','查看预标注结果和人工复核入口。'],
+ review:['选择样本并核对标签。','查看质检和复核记录。'],
+ datasets:['打开数据集版本。','核对来源、状态和质量记录。'],
+ models:['选择模型和版本。','核对模型的数据来源。'],
+ training:['新建训练任务并选择数据版本。','查看训练状态、产物和日志。'],
+ evaluation:['打开评测任务。','核对指标和发布阈值。'],
+ deployments:['选择服务和发布版本。','查看部署状态和回滚入口。'],
+ testing:['输入测试内容。','查看模拟输出和来源。'],
+ knowledge:['点击「接入知识文档」。','查看文档来源和索引状态。'],
+ agents:['选择项目并绑定知识来源。','查看智能体配置和执行记录。'],
+ canvas:['选择画布节点。','核对节点配置和连接。'],
+ feedback:['选择调用记录并填写反馈。','查看修订和复测结果。'],
+ marketplace:['选择成果并设置授权范围和期限。','查看授权状态和使用记录。'],
+ deliveries:['选择交付版本和验收人。','查看签收、拒收和补交记录。'],
+ operations:['打开告警或恢复入口。','查看运行记录和会话快照。'],
+ 'settings-general':['选择要查看的设置项。','核对当前配置。']
 };
 export const tourStageLabels=['模块目标','关键操作','结果与追溯'];
 export const tourTargets={
@@ -33,12 +33,12 @@ export const tourTargets={
  result:['.mv-summary-grid','.pv-table-wrap','.dv-section','.cl-stat-grid','.gov-grid','.cl-grid','.mv-list-panel','.panel','.st-shell','.table-wrap','table']
 };
 export function buildTourSteps(track){
- return track.steps.flatMap(([view,title,description],sectionIndex)=>{
-  const details=tourDetails[view]||['查看当前模块主要操作入口。','检查本模块产出和可追溯记录。'];
+ return track.steps.flatMap(([view,title],sectionIndex)=>{
+  const details=tourDetails[view]||[];
   return [
-   {view,sectionIndex,stage:0,title,description,stageLabel:tourStageLabels[0]},
-   {view,sectionIndex,stage:1,title:title+' · 操作入口',description:details[0],stageLabel:tourStageLabels[1]},
-   {view,sectionIndex,stage:2,title:title+' · 结果检查',description:details[1],stageLabel:tourStageLabels[2]}
+   {view,sectionIndex,stage:0,title,stageLabel:tourStageLabels[0]},
+   {view,sectionIndex,stage:1,title,description:details[0],stageLabel:tourStageLabels[1]},
+   {view,sectionIndex,stage:2,title,description:details[1],stageLabel:tourStageLabels[2]}
   ];
  });
 }
