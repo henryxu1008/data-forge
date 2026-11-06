@@ -74,6 +74,44 @@ function visibleInlineForm(root,selector){
   !node.closest('[hidden],[aria-hidden="true"]')&&node.getClientRects().length>0&&
   window.getComputedStyle(node).visibility!=='hidden')||null;
 }
+// Use the space around the visible target. A short slot can scroll independently.
+function placeTourPanel(target,panel){
+ const inset=12,gap=12;
+ const width=document.documentElement.clientWidth;
+ const height=document.documentElement.clientHeight;
+ const panelWidth=panel.offsetWidth;
+ const maxHeight=height-inset*2;
+ const desiredHeight=Math.min(panel.scrollHeight+panel.offsetHeight-panel.clientHeight,maxHeight);
+ const clamp=(value,min,max)=>Math.min(Math.max(value,min),Math.max(min,max));
+ const centered={
+  left:Math.round((width-panelWidth)/2),
+  top:Math.max(inset,Math.round((height-desiredHeight)/2)),
+  maxHeight
+ };
+ if(!target)return centered;
+
+ const right=target.left+target.width;
+ const bottom=target.top+target.height;
+ const alignedX=clamp(target.left,inset,width-panelWidth-inset);
+ const alignedY=clamp(target.top,inset,height-desiredHeight-inset);
+ const slots=[
+  {side:'right',space:width-inset-right-gap,left:right+gap,top:alignedY,maxHeight:height-inset-alignedY},
+  {side:'left',space:target.left-inset-gap,left:target.left-gap-panelWidth,top:alignedY,maxHeight:height-inset-alignedY},
+  {side:'bottom',space:height-inset-bottom-gap,left:alignedX,top:bottom+gap,maxHeight:height-inset-bottom-gap},
+  {side:'top',space:target.top-inset-gap,left:alignedX,top:inset,maxHeight:target.top-inset-gap}
+ ].filter(slot=>slot.side==='left'||slot.side==='right'?slot.space>=panelWidth:slot.space>=110);
+ const best=slots.find(slot=>slot.maxHeight>=desiredHeight)||
+  slots.sort((a,b)=>b.maxHeight-a.maxHeight)[0];
+ if(best){
+  const top=best.side==='top'?target.top-gap-Math.min(best.maxHeight,desiredHeight):best.top;
+  return {left:best.left,top,maxHeight:best.maxHeight};
+ }
+
+ // If the target fills the viewport, keep the controls reachable in a compact sheet.
+ const compactHeight=Math.min(maxHeight,Math.max(110,Math.floor(height*.30)));
+ const top=target.top+target.height/2>height/2?inset:height-compactHeight-inset;
+ return {...centered,top,maxHeight:compactHeight};
+}
 function readProgress(){try{return JSON.parse(localStorage.getItem(persistKey)||'{}')}catch{return {}}}
 export default function ProcessTour({view,onNavigate}){
  const dialogRef=useRef(null);
@@ -138,7 +176,8 @@ export default function ProcessTour({view,onNavigate}){
   if(!open||!current||(view!==current.view&&view!==safePreviews[current.view]?.inlineRoute)){setBounds(null);return}
   let frame=0;
   let lastTarget=null;
-  const update=()=>{
+  const update=(event)=>{
+   if(event?.target instanceof Node&&dialogRef.current?.contains(event.target))return;
    cancelAnimationFrame(frame);
    frame=requestAnimationFrame(()=>{
     const root=document.querySelector('[data-tour-main]');
@@ -150,7 +189,11 @@ export default function ProcessTour({view,onNavigate}){
     if(!target){setBounds(null);return}
     if(lastTarget!==target){lastTarget=target;target.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'})}
     const rect=target.getBoundingClientRect();
-    setBounds({top:Math.max(0,rect.top-5),left:Math.max(0,rect.left-5),width:rect.width+10,height:rect.height+10,targetClass:typeof target.className==='string'?target.className:'',withinMain:!!target.closest('[data-tour-main]')});
+    const top=Math.max(0,rect.top-5),left=Math.max(0,rect.left-5);
+    const right=Math.min(document.documentElement.clientWidth,rect.right+5);
+    const bottom=Math.min(document.documentElement.clientHeight,rect.bottom+5);
+    if(right<=left||bottom<=top){setBounds(null);return}
+    setBounds({top,left,width:right-left,height:bottom-top,targetClass:typeof target.className==='string'?target.className:'',withinMain:!!target.closest('[data-tour-main]')});
    });
   };
   const timeout=setTimeout(update,110);
@@ -158,6 +201,18 @@ export default function ProcessTour({view,onNavigate}){
   window.addEventListener('resize',update);window.addEventListener('scroll',update,true);
   return()=>{clearTimeout(timeout);cancelAnimationFrame(frame);window.removeEventListener('resize',update);window.removeEventListener('scroll',update,true)};
  },[open,step,trackId,view,preview,fieldIndex]);
+ useLayoutEffect(()=>{
+  const panel=dialogRef.current;
+  if(!open||!panel)return;
+  const position=()=>Object.assign(panel.style,Object.fromEntries(
+   Object.entries(placeTourPanel(bounds,panel)).map(([key,value])=>[key,`${value}px`])
+  ));
+  position();
+  const observer=new ResizeObserver(position);
+  observer.observe(panel);
+  window.addEventListener('resize',position);
+  return()=>{observer.disconnect();window.removeEventListener('resize',position)};
+ },[open,bounds,previewError,missingTarget,step,trackId,preview,fieldIndex]);
  // Removing/replacing a focused preview control does not dispatch focusin.
  // Repair focus after React commits, without resetting valid keyboard navigation.
  useLayoutEffect(()=>{
@@ -210,7 +265,7 @@ export default function ProcessTour({view,onNavigate}){
  const allowPreview=current.stage===1&&!!safePreviews[current.view];
  const moduleTotal=track.steps.length;
  return <><button className="tour-launch" aria-label="打开全流程导览" onClick={()=>setOpen(true)}><IconRoute size={18}/> 流程导览</button>
- {open&&createPortal(<div className="tour-root" data-preview-open={!!preview} role="dialog" aria-modal="true" aria-label="平台业务流程导览">
+ {open&&createPortal(<div className="tour-root" data-preview-open={!!preview} data-has-target={!!bounds} role="dialog" aria-modal="true" aria-label="平台业务流程导览">
   <div className="tour-backdrop" onClick={()=>setOpen(false)}/>
   {bounds&&<div className="tour-highlight" data-target-class={bounds.targetClass} data-within-main={bounds.withinMain} style={{top:bounds.top,left:bounds.left,width:bounds.width,height:bounds.height}} aria-hidden="true"/>}
   <section ref={dialogRef} tabIndex={-1} className="tour-panel">
